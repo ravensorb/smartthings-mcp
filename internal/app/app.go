@@ -105,8 +105,8 @@ func (a *Application) Start() error {
 			// Ideally, we should probably return nil to signal 400 Bad Request if token is missing,
 			// but for now let's fallback or proceed.
 			if token == "" {
-				a.logger.Warn("No SmartThings token provided in request or config")
-				return nil
+				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
+				// We proceed with empty token to allow tool discovery
 			}
 
 			// Initialize SmartThings Client for this session
@@ -162,8 +162,8 @@ func (a *Application) Start() error {
 			}
 
 			if token == "" {
-				a.logger.Warn("No SmartThings token provided in request or config")
-				return nil
+				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
+				// We proceed with empty token to allow tool discovery
 			}
 
 			// Initialize SmartThings Client for this session
