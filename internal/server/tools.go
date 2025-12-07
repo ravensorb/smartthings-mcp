@@ -444,6 +444,304 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		data, _ := json.Marshal(health)
 		return successResult(string(data)), nil
 	})
+
+	// list_subscriptions
+	s.AddTool(&mcp.Tool{
+		Name:        "list_subscriptions",
+		Description: "List subscriptions for an installed app",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the installed app",
+				},
+			},
+			"required": []string{"installed_app_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		if appID == "" {
+			return errorResult("installed_app_id is required"), nil
+		}
+		subs, err := client.ListSubscriptions(appID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(subs)
+		return successResult(string(data)), nil
+	})
+
+	// create_subscription
+	s.AddTool(&mcp.Tool{
+		Name:        "create_subscription",
+		Description: "Create a subscription for device events",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type": "string",
+				},
+				"device_id": map[string]interface{}{
+					"type": "string",
+				},
+				"capability": map[string]interface{}{
+					"type": "string",
+				},
+				"attribute": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"installed_app_id", "device_id", "capability", "attribute"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		deviceID, _ := args["device_id"].(string)
+		capability, _ := args["capability"].(string)
+		attribute, _ := args["attribute"].(string)
+
+		subReq := smartthings.CreateSubscriptionRequest{
+			SourceType: "DEVICE",
+			Device: &struct {
+				DeviceID        string `json:"deviceId"`
+				ComponentID     string `json:"componentId,omitempty"`
+				Capability      string `json:"capability"`
+				Attribute       string `json:"attribute"`
+				StateChangeOnly bool   `json:"stateChangeOnly,omitempty"`
+			}{
+				DeviceID:        deviceID,
+				Capability:      capability,
+				Attribute:       attribute,
+				StateChangeOnly: true,
+			},
+		}
+
+		sub, err := client.CreateSubscription(appID, subReq)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(sub)
+		return successResult(string(data)), nil
+	})
+
+	// delete_subscription
+	s.AddTool(&mcp.Tool{
+		Name:        "delete_subscription",
+		Description: "Delete a subscription",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type": "string",
+				},
+				"subscription_id": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"installed_app_id", "subscription_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		subID, _ := args["subscription_id"].(string)
+		if err := client.DeleteSubscription(appID, subID); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return successResult("ok"), nil
+	})
+
+	// list_schedules
+	s.AddTool(&mcp.Tool{
+		Name:        "list_schedules",
+		Description: "List schedules for an installed app",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"installed_app_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		schedules, err := client.ListSchedules(appID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(schedules)
+		return successResult(string(data)), nil
+	})
+
+	// create_schedule
+	s.AddTool(&mcp.Tool{
+		Name:        "create_schedule",
+		Description: "Create a cron schedule",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type": "string",
+				},
+				"name": map[string]interface{}{
+					"type": "string",
+				},
+				"cron_expression": map[string]interface{}{
+					"type": "string",
+				},
+				"timezone": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"installed_app_id", "name", "cron_expression"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		name, _ := args["name"].(string)
+		cronExpr, _ := args["cron_expression"].(string)
+		timezone, _ := args["timezone"].(string)
+		if timezone == "" {
+			timezone = "UTC"
+		}
+
+		schReq := smartthings.CreateScheduleRequest{
+			Name: name,
+			Cron: &struct {
+				Expression string `json:"expression"`
+				Timezone   string `json:"timezone"`
+			}{
+				Expression: cronExpr,
+				Timezone:   timezone,
+			},
+		}
+
+		sch, err := client.CreateSchedule(appID, schReq)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(sch)
+		return successResult(string(data)), nil
+	})
+
+	// delete_schedule
+	s.AddTool(&mcp.Tool{
+		Name:        "delete_schedule",
+		Description: "Delete a schedule",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"installed_app_id": map[string]interface{}{
+					"type": "string",
+				},
+				"schedule_id": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"required": []string{"installed_app_id", "schedule_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		appID, _ := args["installed_app_id"].(string)
+		schID, _ := args["schedule_id"].(string)
+		if err := client.DeleteSchedule(appID, schID); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return successResult("ok"), nil
+	})
+
+	// get_device_history
+	s.AddTool(&mcp.Tool{
+		Name:        "get_device_history",
+		Description: "Get recent event history for a device",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the device",
+				},
+			},
+			"required": []string{"device_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		deviceID, _ := args["device_id"].(string)
+		if deviceID == "" {
+			return errorResult("device_id is required"), nil
+		}
+		history, err := client.GetDeviceHistory(deviceID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(history)
+		return successResult(string(data)), nil
+	})
+
+	// get_capability
+	s.AddTool(&mcp.Tool{
+		Name:        "get_capability",
+		Description: "Get definition of a SmartThings capability",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"capability_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the capability (e.g., switch)",
+				},
+				"version": map[string]interface{}{
+					"type":        "number",
+					"description": "The version of the capability (default: 1)",
+				},
+			},
+			"required": []string{"capability_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		capID, _ := args["capability_id"].(string)
+		versionFloat, ok := args["version"].(float64)
+		version := 1
+		if ok {
+			version = int(versionFloat)
+		}
+
+		if capID == "" {
+			return errorResult("capability_id is required"), nil
+		}
+		capDef, err := client.GetCapability(capID, version)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(capDef)
+		return successResult(string(data)), nil
+	})
 }
 
 func successResult(text string) *mcp.CallToolResult {

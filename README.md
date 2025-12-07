@@ -13,6 +13,10 @@ LLM-friendly tools, resources and real-time events.
   * **Locations & Rooms**: `list_locations`, `list_rooms`, `create_room`, `delete_room`
   * **Scenes & Rules**: `list_scenes`, `execute_scene`, `list_rules`
   * **Hubs**: `list_hubs`, `get_hub_health`
+  * **Subscriptions**: `list_subscriptions`, `create_subscription`, `delete_subscription`
+  * **Schedules**: `list_schedules`, `create_schedule`, `delete_schedule`
+  * **History**: `get_device_history`
+  * **Capabilities**: `get_capability`
 * Exposes device / status / location data as **MCP Resources** with read-through cache
 * Supports all official **MCP-Go transports**
   * **Stdio** (CLI / local), **StreamableHTTP**, **Server-Sent Events (SSE)**
@@ -102,6 +106,14 @@ The server emits `smartthings/device_status` notifications every 30 seconds.
 | `list_rules` | – | List automation rules |
 | `list_hubs` | – | List hubs |
 | `get_hub_health` | `hub_id` | Get hub health status |
+| `list_subscriptions` | `installed_app_id` | List subscriptions |
+| `create_subscription` | `installed_app_id`, `device_id`, ... | Subscribe to device events |
+| `delete_subscription` | `installed_app_id`, `subscription_id` | Delete subscription |
+| `list_schedules` | `installed_app_id` | List schedules |
+| `create_schedule` | `installed_app_id`, `name`, `cron` | Create cron schedule |
+| `delete_schedule` | `installed_app_id`, `schedule_id` | Delete schedule |
+| `get_device_history` | `device_id` | Get recent device events |
+| `get_capability` | `capability_id`, `version` | Get capability definition |
 
 ## Resource Patterns
 
