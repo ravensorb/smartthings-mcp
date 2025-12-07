@@ -56,6 +56,15 @@ type Location struct {
 	Name       string `json:"name"`
 }
 
+// Scene represents a SmartThings scene.
+type Scene struct {
+	SceneID          string    `json:"sceneId"`
+	SceneName        string    `json:"sceneName"`
+	LocationID       string    `json:"locationId"`
+	CreatedDate      time.Time `json:"createdDate"`
+	LastExecutedDate time.Time `json:"lastExecutedDate"`
+}
+
 // GetLocation returns metadata for a single location by ID.
 func (c *Client) GetLocation(id string) (*Location, error) {
 	var loc Location
@@ -139,6 +148,103 @@ func (c *Client) ExecuteScene(sceneID string) (*ExecuteSceneResponse, error) {
 	return &res, nil
 }
 
+// ListScenes returns scenes.
+func (c *Client) ListScenes() ([]Scene, error) {
+	var resp struct {
+		Items []Scene `json:"items"`
+	}
+	if err := c.get("/v1/scenes", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// Room represents a SmartThings room.
+type Room struct {
+	RoomID          string `json:"roomId"`
+	LocationID      string `json:"locationId"`
+	Name            string `json:"name"`
+	BackgroundImage string `json:"backgroundImage,omitempty"`
+}
+
+// ListRooms returns rooms for a location.
+func (c *Client) ListRooms(locationID string) ([]Room, error) {
+	var resp struct {
+		Items []Room `json:"items"`
+	}
+	if err := c.get(fmt.Sprintf("/v1/locations/%s/rooms", locationID), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CreateRoom creates a room in a location.
+func (c *Client) CreateRoom(locationID, name string) (*Room, error) {
+	req := map[string]string{
+		"name": name,
+	}
+	var room Room
+	if err := c.post(fmt.Sprintf("/v1/locations/%s/rooms", locationID), req, &room); err != nil {
+		return nil, err
+	}
+	return &room, nil
+}
+
+// DeleteRoom deletes a room.
+func (c *Client) DeleteRoom(locationID, roomID string) error {
+	return c.delete(fmt.Sprintf("/v1/locations/%s/rooms/%s", locationID, roomID))
+}
+
+// Rule represents a SmartThings rule.
+type Rule struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Additional fields like actions can be added if needed, keeping it simple for now.
+}
+
+// ListRules returns rules.
+func (c *Client) ListRules() ([]Rule, error) {
+	var resp struct {
+		Items []Rule `json:"items"`
+	}
+	if err := c.get("/v1/rules", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// Hub represents a SmartThings hub.
+type Hub struct {
+	HubID           string `json:"hubId"`
+	Name            string `json:"name"`
+	FirmwareVersion string `json:"firmwareVersion"`
+}
+
+// HubHealth represents the health status of a hub.
+type HubHealth struct {
+	State string `json:"state"` // e.g., "ONLINE", "OFFLINE"
+}
+
+// ListHubs returns list of hubs.
+func (c *Client) ListHubs() ([]Hub, error) {
+	var resp struct {
+		Items []Hub `json:"items"`
+	}
+	if err := c.get("/v1/hubs", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// GetHubHealth returns health status of a hub.
+func (c *Client) GetHubHealth(hubID string) (*HubHealth, error) {
+	var health HubHealth
+	if err := c.get(fmt.Sprintf("/v1/hubs/%s/health", hubID), &health); err != nil {
+		return nil, err
+	}
+	return &health, nil
+}
+
 // Helpers
 func (c *Client) get(path string, out interface{}) error {
 	// Check if token is configured before making API calls
@@ -194,6 +300,28 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	if out != nil {
 		return json.NewDecoder(res.Body).Decode(out)
+	}
+	return nil
+}
+
+func (c *Client) delete(path string) error {
+	// Check if token is configured before making API calls
+	if c.token == "" {
+		return fmt.Errorf("SmartThings token not configured. Please set the SMARTTHINGS_TOKEN environment variable")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return fmt.Errorf("SmartThings API error: %s (path: %s)", res.Status, path)
 	}
 	return nil
 }

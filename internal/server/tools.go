@@ -264,6 +264,186 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		out, _ := json.Marshal(resp)
 		return successResult(string(out)), nil
 	})
+
+	// list_scenes
+	s.AddTool(&mcp.Tool{
+		Name:        "list_scenes",
+		Description: "List SmartThings scenes",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		scenes, err := client.ListScenes()
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(scenes)
+		return successResult(string(data)), nil
+	})
+
+	// list_rooms
+	s.AddTool(&mcp.Tool{
+		Name:        "list_rooms",
+		Description: "List rooms in a SmartThings location",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the location to list rooms for",
+				},
+			},
+			"required": []string{"location_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		if locID == "" {
+			return errorResult("location_id is required"), nil
+		}
+		rooms, err := client.ListRooms(locID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(rooms)
+		return successResult(string(data)), nil
+	})
+
+	// create_room
+	s.AddTool(&mcp.Tool{
+		Name:        "create_room",
+		Description: "Create a new room in a SmartThings location",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the location to create room in",
+				},
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "The name of the new room",
+				},
+			},
+			"required": []string{"location_id", "name"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		name, _ := args["name"].(string)
+		if locID == "" || name == "" {
+			return errorResult("location_id and name are required"), nil
+		}
+		room, err := client.CreateRoom(locID, name)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(room)
+		return successResult(string(data)), nil
+	})
+
+	// delete_room
+	s.AddTool(&mcp.Tool{
+		Name:        "delete_room",
+		Description: "Delete a room from a SmartThings location",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the location",
+				},
+				"room_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the room to delete",
+				},
+			},
+			"required": []string{"location_id", "room_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		roomID, _ := args["room_id"].(string)
+		if locID == "" || roomID == "" {
+			return errorResult("location_id and room_id are required"), nil
+		}
+		if err := client.DeleteRoom(locID, roomID); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return successResult("ok"), nil
+	})
+
+	// list_rules
+	s.AddTool(&mcp.Tool{
+		Name:        "list_rules",
+		Description: "List SmartThings automation rules",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		rules, err := client.ListRules()
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(rules)
+		return successResult(string(data)), nil
+	})
+
+	// list_hubs
+	s.AddTool(&mcp.Tool{
+		Name:        "list_hubs",
+		Description: "List SmartThings hubs",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		hubs, err := client.ListHubs()
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(hubs)
+		return successResult(string(data)), nil
+	})
+
+	// get_hub_health
+	s.AddTool(&mcp.Tool{
+		Name:        "get_hub_health",
+		Description: "Get health status of a SmartThings hub",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"hub_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The ID of the hub",
+				},
+			},
+			"required": []string{"hub_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		hubID, _ := args["hub_id"].(string)
+		if hubID == "" {
+			return errorResult("hub_id is required"), nil
+		}
+		health, err := client.GetHubHealth(hubID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(health)
+		return successResult(string(data)), nil
+	})
 }
 
 func successResult(text string) *mcp.CallToolResult {
