@@ -108,7 +108,10 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
 			return errorResult("invalid arguments"), nil
 		}
-		id, _ := args["device_id"].(string)
+		id, ok := args["device_id"].(string)
+		if !ok {
+			return errorResult("device_id is required"), nil
+		}
 		status, err := client.GetDeviceStatus(id)
 		if err != nil {
 			return errorResult(err.Error()), nil
