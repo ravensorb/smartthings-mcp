@@ -28,5 +28,16 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+.cursor/
+
+# logs
+logs/
+
+# Config files
+*.yml
+*.yaml
+*.toml
+
+!smithery.yaml
