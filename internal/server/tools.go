@@ -20,7 +20,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"location_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional location ID to filter devices",
+					"description": "Optional location ID to filter devices. If not provided, returns devices from all locations.",
 				},
 			},
 		},
@@ -53,6 +53,10 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			Content: []mcp.Content{
 				&mcp.TextContent{
 					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
 				},
 			},
 		}, nil
@@ -67,7 +71,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"device_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the device to retrieve",
+					"description": "The unique identifier of the device to retrieve (e.g., UUID)",
 				},
 			},
 			"required": []string{"device_id"},
@@ -86,7 +90,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(d)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.9,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// get_device_status
@@ -98,7 +112,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"device_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the device to check status for",
+					"description": "The unique identifier of the device to check status for",
 				},
 			},
 			"required": []string{"device_id"},
@@ -117,7 +131,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(status)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.9, // Status is high priority
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_device_capabilities
@@ -129,7 +153,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"device_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the device to list capabilities for",
+					"description": "The unique identifier of the device to list capabilities for",
 				},
 			},
 			"required": []string{"device_id"},
@@ -158,7 +182,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			caps = append(caps, c)
 		}
 		data, _ := json.Marshal(caps)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("assistant")}, // Capabilities are mostly for the assistant
+						Priority: 0.5,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// send_device_command
@@ -170,23 +204,23 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"device_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the device to command",
+					"description": "The unique identifier of the device to command",
 				},
 				"component": map[string]interface{}{
 					"type":        "string",
-					"description": "The component ID (default: main)",
+					"description": "The component ID (default: main). Use 'main' for most single-component devices.",
 				},
 				"capability": map[string]interface{}{
 					"type":        "string",
-					"description": "The capability ID (e.g., switch)",
+					"description": "The capability ID (e.g., switch, audioVolume). Must be supported by the device.",
 				},
 				"command": map[string]interface{}{
 					"type":        "string",
-					"description": "The command to execute (e.g., on, off)",
+					"description": "The command to execute (e.g., on, off, setVolume).",
 				},
 				"arguments": map[string]interface{}{
 					"type":        "array",
-					"description": "List of arguments for the command",
+					"description": "List of arguments for the command (e.g. [50] for setVolume). Optional.",
 				},
 			},
 			"required": []string{"device_id", "capability", "command"},
@@ -218,7 +252,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		if err := client.SendDeviceCommand(id, body); err != nil {
 			return errorResult(err.Error()), nil
 		}
-		return successResult("ok"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "ok",
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 1.0, // Command confirmation is critical
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_locations
@@ -234,7 +278,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(locs)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("assistant")},
+						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// execute_scene
@@ -246,7 +300,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"scene_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the scene to execute",
+					"description": "The unique identifier of the scene to execute",
 				},
 			},
 			"required": []string{"scene_id"},
@@ -262,7 +316,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		out, _ := json.Marshal(resp)
-		return successResult(string(out)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(out),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 1.0,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_scenes
@@ -278,7 +342,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(scenes)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_rooms
@@ -290,7 +364,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"location_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the location to list rooms for",
+					"description": "The unique identifier of the location to list rooms for",
 				},
 			},
 			"required": []string{"location_id"},
@@ -309,7 +383,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(rooms)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("assistant")},
+						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// create_room
@@ -321,11 +405,11 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"location_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the location to create room in",
+					"description": "The unique identifier of the location to create room in",
 				},
 				"name": map[string]interface{}{
 					"type":        "string",
-					"description": "The name of the new room",
+					"description": "The name of the new room (e.g., 'Living Room', 'Office')",
 				},
 			},
 			"required": []string{"location_id", "name"},
@@ -345,7 +429,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(room)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// delete_room
@@ -357,11 +451,11 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"location_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the location",
+					"description": "The unique identifier of the location",
 				},
 				"room_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the room to delete",
+					"description": "The unique identifier of the room to delete",
 				},
 			},
 			"required": []string{"location_id", "room_id"},
@@ -379,7 +473,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		if err := client.DeleteRoom(locID, roomID); err != nil {
 			return errorResult(err.Error()), nil
 		}
-		return successResult("ok"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "ok",
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_rules
@@ -395,7 +499,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(rules)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("assistant")},
+						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_hubs
@@ -411,7 +525,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(hubs)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.7,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// get_hub_health
@@ -423,7 +547,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"hub_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the hub",
+					"description": "The unique identifier of the hub",
 				},
 			},
 			"required": []string{"hub_id"},
@@ -442,7 +566,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(health)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.9,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_subscriptions
@@ -454,7 +588,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the installed app",
+					"description": "The unique identifier of the installed app",
 				},
 			},
 			"required": []string{"installed_app_id"},
@@ -473,7 +607,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(subs)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("assistant")},
+						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// create_subscription
@@ -484,16 +628,20 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the installed app",
 				},
 				"device_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the device to subscribe to",
 				},
 				"capability": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The capability to monitor (e.g., switch, audioVolume)",
 				},
 				"attribute": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The attribute to monitor (e.g., switch, volume)",
 				},
 			},
 			"required": []string{"installed_app_id", "device_id", "capability", "attribute"},
@@ -529,7 +677,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		data, _ := json.Marshal(sub)
-		return successResult(string(data)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// delete_subscription
@@ -540,10 +698,12 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the installed app",
 				},
 				"subscription_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the subscription to delete",
 				},
 			},
 			"required": []string{"installed_app_id", "subscription_id"},
@@ -558,7 +718,17 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		if err := client.DeleteSubscription(appID, subID); err != nil {
 			return errorResult(err.Error()), nil
 		}
-		return successResult("ok"), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "ok",
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
 	})
 
 	// list_schedules
@@ -569,7 +739,8 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the installed app",
 				},
 			},
 			"required": []string{"installed_app_id"},
@@ -596,16 +767,20 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the installed app",
 				},
 				"name": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The name of the schedule (e.g., 'Morning Routine')",
 				},
 				"cron_expression": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "Cron expression for the schedule (e.g., '0 0 7 * * ?' for daily at 7 AM)",
 				},
 				"timezone": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "Timezone for the schedule (e.g., 'Asia/Seoul', 'UTC'). Defaults to UTC.",
 				},
 			},
 			"required": []string{"installed_app_id", "name", "cron_expression"},
@@ -650,10 +825,12 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"installed_app_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the installed app",
 				},
 				"schedule_id": map[string]interface{}{
-					"type": "string",
+					"type":        "string",
+					"description": "The unique identifier of the schedule to delete",
 				},
 			},
 			"required": []string{"installed_app_id", "schedule_id"},
@@ -680,7 +857,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"device_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the device",
+					"description": "The unique identifier of the device to retrieve history for",
 				},
 			},
 			"required": []string{"device_id"},
@@ -711,7 +888,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			"properties": map[string]interface{}{
 				"capability_id": map[string]interface{}{
 					"type":        "string",
-					"description": "The ID of the capability (e.g., switch)",
+					"description": "The unique identifier of the capability (e.g., 'switch', 'audioVolume')",
 				},
 				"version": map[string]interface{}{
 					"type":        "number",
