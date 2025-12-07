@@ -1,0 +1,16 @@
+runtime: "container"
+build:
+  dockerfile: "Dockerfile"
+  dockerBuildPath: "."
+startCommand:
+  type: "http"
+  configSchema:
+    type: "object"
+    properties:
+      smartThingsToken:
+        type: "string"
+        description: "SmartThings Personal Access Token"
+      stBaseUrl:
+        type: "string"
+        description: "SmartThings API Base URL (optional)"
+    required: ["smartThingsToken"]
