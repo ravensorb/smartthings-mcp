@@ -9,9 +9,14 @@ LLM-friendly tools, resources and real-time events.
 
 * **Lazy Loading**: Tools are discoverable without authentication - only validates API keys when tools are invoked
 * Wraps common SmartThings operations as **MCP Tools**
-  * `list_devices`, `get_device`, `get_device_status`
-  * `list_device_capabilities`, `send_device_command`
-  * `list_locations`, `execute_scene`
+  * **Devices**: `list_devices`, `get_device`, `get_device_status`, `list_device_capabilities`, `send_device_command`
+  * **Locations & Rooms**: `list_locations`, `list_rooms`, `create_room`, `delete_room`
+  * **Scenes & Rules**: `list_scenes`, `execute_scene`, `list_rules`
+  * **Hubs**: `list_hubs`, `get_hub_health`
+  * **Subscriptions**: `list_subscriptions`, `create_subscription`, `delete_subscription`
+  * **Schedules**: `list_schedules`, `create_schedule`, `delete_schedule`
+  * **History**: `get_device_history`
+  * **Capabilities**: `get_capability`
 * Exposes device / status / location data as **MCP Resources** with read-through cache
 * Supports all official **MCP-Go transports**
   * **Stdio** (CLI / local), **StreamableHTTP**, **Server-Sent Events (SSE)**
@@ -22,6 +27,15 @@ LLM-friendly tools, resources and real-time events.
 
 * Go ≥ 1.23
 * A valid **SmartThings PAT** (Personal Access Token)
+
+### Getting a Personal Access Token (PAT)
+
+1. Go to [SmartThings Personal Access Tokens](https://account.smartthings.com/tokens).
+2. Log in with your Samsung Account.
+3. Click **Generate new token**.
+4. Enter a name for your token and select the authorized scopes (e.g., `devices`, `locations`, `scenes`, `rules`, `schedules`).
+5. Click **Generate token**.
+6. **Copy and save** the token immediately (it won't be shown again).
 
 ## Environment Variables
 
@@ -93,7 +107,22 @@ The server emits `smartthings/device_status` notifications every 30 seconds.
 | `list_device_capabilities` | `device_id` | Supported capabilities |
 | `send_device_command` | `device_id`, `component`, `capability`, `command`, `arguments?[]` | Issue command |
 | `list_locations` | – | List locations |
+| `list_rooms` | `location_id` | List rooms in a location |
+| `create_room` | `location_id`, `name` | Create a new room |
+| `delete_room` | `location_id`, `room_id` | Delete a room |
+| `list_scenes` | – | List all scenes |
 | `execute_scene` | `scene_id` | Trigger scene |
+| `list_rules` | – | List automation rules |
+| `list_hubs` | – | List hubs |
+| `get_hub_health` | `hub_id` | Get hub health status |
+| `list_subscriptions` | `installed_app_id` | List subscriptions |
+| `create_subscription` | `installed_app_id`, `device_id`, ... | Subscribe to device events |
+| `delete_subscription` | `installed_app_id`, `subscription_id` | Delete subscription |
+| `list_schedules` | `installed_app_id` | List schedules |
+| `create_schedule` | `installed_app_id`, `name`, `cron` | Create cron schedule |
+| `delete_schedule` | `installed_app_id`, `schedule_id` | Delete schedule |
+| `get_device_history` | `device_id` | Get recent device events |
+| `get_capability` | `capability_id`, `version` | Get capability definition |
 
 ## Resource Patterns
 

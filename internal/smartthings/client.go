@@ -56,6 +56,15 @@ type Location struct {
 	Name       string `json:"name"`
 }
 
+// Scene represents a SmartThings scene.
+type Scene struct {
+	SceneID          string    `json:"sceneId"`
+	SceneName        string    `json:"sceneName"`
+	LocationID       string    `json:"locationId"`
+	CreatedDate      time.Time `json:"createdDate"`
+	LastExecutedDate time.Time `json:"lastExecutedDate"`
+}
+
 // GetLocation returns metadata for a single location by ID.
 func (c *Client) GetLocation(id string) (*Location, error) {
 	var loc Location
@@ -139,6 +148,239 @@ func (c *Client) ExecuteScene(sceneID string) (*ExecuteSceneResponse, error) {
 	return &res, nil
 }
 
+// ListScenes returns scenes.
+func (c *Client) ListScenes() ([]Scene, error) {
+	var resp struct {
+		Items []Scene `json:"items"`
+	}
+	if err := c.get("/v1/scenes", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// Room represents a SmartThings room.
+type Room struct {
+	RoomID          string `json:"roomId"`
+	LocationID      string `json:"locationId"`
+	Name            string `json:"name"`
+	BackgroundImage string `json:"backgroundImage,omitempty"`
+}
+
+// ListRooms returns rooms for a location.
+func (c *Client) ListRooms(locationID string) ([]Room, error) {
+	var resp struct {
+		Items []Room `json:"items"`
+	}
+	if err := c.get(fmt.Sprintf("/v1/locations/%s/rooms", locationID), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CreateRoom creates a room in a location.
+func (c *Client) CreateRoom(locationID, name string) (*Room, error) {
+	req := map[string]string{
+		"name": name,
+	}
+	var room Room
+	if err := c.post(fmt.Sprintf("/v1/locations/%s/rooms", locationID), req, &room); err != nil {
+		return nil, err
+	}
+	return &room, nil
+}
+
+// DeleteRoom deletes a room.
+func (c *Client) DeleteRoom(locationID, roomID string) error {
+	return c.delete(fmt.Sprintf("/v1/locations/%s/rooms/%s", locationID, roomID))
+}
+
+// Rule represents a SmartThings rule.
+type Rule struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Additional fields like actions can be added if needed, keeping it simple for now.
+}
+
+// ListRules returns rules.
+func (c *Client) ListRules() ([]Rule, error) {
+	var resp struct {
+		Items []Rule `json:"items"`
+	}
+	if err := c.get("/v1/rules", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// Hub represents a SmartThings hub.
+type Hub struct {
+	HubID           string `json:"hubId"`
+	Name            string `json:"name"`
+	FirmwareVersion string `json:"firmwareVersion"`
+}
+
+// HubHealth represents the health status of a hub.
+type HubHealth struct {
+	State string `json:"state"` // e.g., "ONLINE", "OFFLINE"
+}
+
+// ListHubs returns list of hubs.
+func (c *Client) ListHubs() ([]Hub, error) {
+	var resp struct {
+		Items []Hub `json:"items"`
+	}
+	if err := c.get("/v1/hubs", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// GetHubHealth returns health status of a hub.
+func (c *Client) GetHubHealth(hubID string) (*HubHealth, error) {
+	var health HubHealth
+	if err := c.get(fmt.Sprintf("/v1/hubs/%s/health", hubID), &health); err != nil {
+		return nil, err
+	}
+	return &health, nil
+}
+
+// Subscription represents a SmartThings subscription.
+type Subscription struct {
+	ID               string `json:"id"`
+	InstalledAppID   string `json:"installedAppId"`
+	SourceType       string `json:"sourceType"` // e.g. DEVICE, CAPABILITY, MODE
+	Capability       string `json:"capability,omitempty"`
+	Attribute        string `json:"attribute,omitempty"`
+	Value            string `json:"value,omitempty"`
+	StateChangeOnly  bool   `json:"stateChangeOnly,omitempty"`
+	SubscriptionName string `json:"subscriptionName,omitempty"`
+}
+
+// ListSubscriptions returns subscriptions for an installed app.
+func (c *Client) ListSubscriptions(installedAppID string) ([]Subscription, error) {
+	var resp struct {
+		Items []Subscription `json:"items"`
+	}
+	if err := c.get(fmt.Sprintf("/v1/installedapps/%s/subscriptions", installedAppID), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CreateSubscriptionRequest defines the payload for creating a subscription.
+type CreateSubscriptionRequest struct {
+	SourceType string `json:"sourceType"`
+	Device     *struct {
+		DeviceID        string `json:"deviceId"`
+		ComponentID     string `json:"componentId,omitempty"`
+		Capability      string `json:"capability"`
+		Attribute       string `json:"attribute"`
+		StateChangeOnly bool   `json:"stateChangeOnly,omitempty"`
+	} `json:"device,omitempty"`
+	// Simplified for device subscriptions for now
+}
+
+// CreateSubscription creates a new subscription.
+func (c *Client) CreateSubscription(installedAppID string, req CreateSubscriptionRequest) (*Subscription, error) {
+	var sub Subscription
+	if err := c.post(fmt.Sprintf("/v1/installedapps/%s/subscriptions", installedAppID), req, &sub); err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
+// DeleteSubscription deletes a subscription.
+func (c *Client) DeleteSubscription(installedAppID, subscriptionID string) error {
+	return c.delete(fmt.Sprintf("/v1/installedapps/%s/subscriptions/%s", installedAppID, subscriptionID))
+}
+
+// Schedule represents a SmartThings schedule.
+type Schedule struct {
+	ScheduleID string `json:"scheduleId"`
+	Name       string `json:"name"`
+	Cron       *struct {
+		Expression string `json:"expression"`
+		Timezone   string `json:"timezone"`
+	} `json:"cron,omitempty"`
+}
+
+// ListSchedules returns schedules for an installed app.
+func (c *Client) ListSchedules(installedAppID string) ([]Schedule, error) {
+	var resp struct {
+		Items []Schedule `json:"items"`
+	}
+	if err := c.get(fmt.Sprintf("/v1/installedapps/%s/schedules", installedAppID), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CreateScheduleRequest defines the payload for creating a schedule.
+type CreateScheduleRequest struct {
+	Name string `json:"name"`
+	Cron *struct {
+		Expression string `json:"expression"`
+		Timezone   string `json:"timezone"`
+	} `json:"cron,omitempty"`
+	// Simplified for cron schedules
+}
+
+// CreateSchedule creates a new schedule.
+func (c *Client) CreateSchedule(installedAppID string, req CreateScheduleRequest) (*Schedule, error) {
+	var sch Schedule
+	if err := c.post(fmt.Sprintf("/v1/installedapps/%s/schedules", installedAppID), req, &sch); err != nil {
+		return nil, err
+	}
+	return &sch, nil
+}
+
+// DeleteSchedule deletes a schedule.
+func (c *Client) DeleteSchedule(installedAppID, scheduleID string) error {
+	return c.delete(fmt.Sprintf("/v1/installedapps/%s/schedules/%s", installedAppID, scheduleID))
+}
+
+// DeviceEvent represents a single event in history.
+type DeviceEvent struct {
+	Date       time.Time   `json:"date"`
+	DeviceID   string      `json:"deviceId"`
+	Component  string      `json:"component"`
+	Capability string      `json:"capability"`
+	Attribute  string      `json:"attribute"`
+	Value      interface{} `json:"value"`
+	Unit       string      `json:"unit,omitempty"`
+}
+
+// GetDeviceHistory returns event history for a device.
+func (c *Client) GetDeviceHistory(deviceID string) ([]DeviceEvent, error) {
+	var resp struct {
+		Items []DeviceEvent `json:"items"`
+	}
+	// Limit to recent 20 events for simplicity
+	if err := c.get(fmt.Sprintf("/v1/devices/%s/history?limit=20", deviceID), &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CapabilityDefinition represents a SmartThings capability.
+type CapabilityDefinition struct {
+	ID         string                 `json:"id"`
+	Version    int                    `json:"version"`
+	Status     string                 `json:"status"`
+	Attributes map[string]interface{} `json:"attributes,omitempty"`
+	Commands   map[string]interface{} `json:"commands,omitempty"`
+}
+
+// GetCapability returns capability definition.
+func (c *Client) GetCapability(capabilityID string, version int) (*CapabilityDefinition, error) {
+	var cap CapabilityDefinition
+	if err := c.get(fmt.Sprintf("/v1/capabilities/%s/%d", capabilityID, version), &cap); err != nil {
+		return nil, err
+	}
+	return &cap, nil
+}
+
 // Helpers
 func (c *Client) get(path string, out interface{}) error {
 	// Check if token is configured before making API calls
@@ -194,6 +436,28 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	if out != nil {
 		return json.NewDecoder(res.Body).Decode(out)
+	}
+	return nil
+}
+
+func (c *Client) delete(path string) error {
+	// Check if token is configured before making API calls
+	if c.token == "" {
+		return fmt.Errorf("SmartThings token not configured. Please set the SMARTTHINGS_TOKEN environment variable")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return fmt.Errorf("SmartThings API error: %s (path: %s)", res.Status, path)
 	}
 	return nil
 }
