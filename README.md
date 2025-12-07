@@ -28,6 +28,15 @@ LLM-friendly tools, resources and real-time events.
 * Go ≥ 1.23
 * A valid **SmartThings PAT** (Personal Access Token)
 
+### Getting a Personal Access Token (PAT)
+
+1. Go to [SmartThings Personal Access Tokens](https://account.smartthings.com/tokens).
+2. Log in with your Samsung Account.
+3. Click **Generate new token**.
+4. Enter a name for your token and select the authorized scopes (e.g., `devices`, `locations`, `scenes`, `rules`, `schedules`).
+5. Click **Generate token**.
+6. **Copy and save** the token immediately (it won't be shown again).
+
 ## Environment Variables
 
 | Name | Default | Description |
