@@ -64,17 +64,17 @@ go mod download
 
 ## Running
 
-### Stdio (default)
+### Stdio
 
 ```bash
-SMARTTHINGS_TOKEN=123ab456-xxx... go run ./cmd/server
+SMARTTHINGS_TOKEN=123ab456-xxx... go run ./cmd/server -transport stdio
 ```
 
 ### StreamableHTTP
 
 ```bash
 SMARTTHINGS_TOKEN=123ab456-xxx... \
-  go run ./cmd/server -transport http -host 0.0.0.0 -port 8081
+  go run ./cmd/server -transport stream -host 0.0.0.0 -port 8081
 ```
 
 Test request:
