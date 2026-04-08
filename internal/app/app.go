@@ -10,30 +10,34 @@ import (
 	"syscall"
 	"time"
 
+	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/langowarny/smartthings-mcp/internal/auth"
 	srv "github.com/langowarny/smartthings-mcp/internal/server"
 	"github.com/langowarny/smartthings-mcp/internal/smartthings"
 )
 
 type Config struct {
-	Transport string
-	Host      string
-	Port      int
-	Token     string
-	BaseURL   string
+	Transport  string
+	Host       string
+	Port       int
+	Token      string
+	BaseURL    string
+	AuthConfig auth.AuthConfig
 }
 
 type Application struct {
-	cfg        Config
-	logger     *zap.SugaredLogger
-	server     *mcp.Server
-	httpServer *http.Server
-	ctx        context.Context
-	cancel     context.CancelFunc
-	done       chan struct{}
+	cfg         Config
+	logger      *zap.SugaredLogger
+	server      *mcp.Server
+	httpServer  *http.Server
+	authCleanup func()
+	ctx         context.Context
+	cancel      context.CancelFunc
+	done        chan struct{}
 }
 
 func NewApplication(cfg Config) (*Application, error) {
@@ -56,6 +60,60 @@ func NewApplication(cfg Config) (*Application, error) {
 	}, nil
 }
 
+// initAuth initializes JWT auth middleware if enabled. Returns the middleware
+// wrapper (identity function if auth disabled) and any error.
+func (a *Application) initAuth() (func(http.Handler) http.Handler, error) {
+	cfg := a.cfg.AuthConfig
+	if !cfg.Enabled {
+		return func(h http.Handler) http.Handler { return h }, nil
+	}
+
+	verifier, cleanup, err := auth.NewJWTVerifier(a.ctx, cfg, a.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize JWT auth: %w", err)
+	}
+	a.authCleanup = cleanup
+
+	opts := &sdkauth.RequireBearerTokenOptions{
+		Scopes: cfg.RequiredScopes,
+	}
+	if cfg.ResourceID != "" {
+		opts.ResourceMetadataURL = cfg.ResourceID + "/.well-known/oauth-protected-resource"
+	}
+
+	return sdkauth.RequireBearerToken(verifier, opts), nil
+}
+
+// setupMux creates an HTTP mux with auth middleware and optional metadata endpoint.
+func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http.Handler) http.Handler) http.Handler {
+	mux := http.NewServeMux()
+
+	// RFC 9728 metadata endpoint (unauthenticated).
+	if a.cfg.AuthConfig.ResourceID != "" {
+		mux.Handle("/.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
+	}
+
+	// MCP handler wrapped with auth middleware.
+	protected := authMiddleware(mcpHandler)
+	mux.Handle("/mcp", protected)
+	mux.Handle("/", protected)
+
+	// CORS wraps everything (outermost).
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id, mcp-protocol-version")
+		w.Header().Set("Access-Control-Expose-Headers", "mcp-session-id, mcp-protocol-version")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		mux.ServeHTTP(w, r)
+	})
+}
+
 func (a *Application) Start() error {
 	a.logger.Info("Starting SmartThings MCP Server...")
 
@@ -66,12 +124,18 @@ func (a *Application) Start() error {
 	s := srv.NewMCPServer(a.logger, stClient)
 	a.server = s
 
+	// Initialize auth middleware (no-op if disabled).
+	authMiddleware, err := a.initAuth()
+	if err != nil {
+		return err
+	}
+
 	// Handle Transport
 	switch a.cfg.Transport {
 	case "stdio":
 		go func() {
 			defer close(a.done)
-			// StdioTransport uses stdin/stdout
+			// StdioTransport uses stdin/stdout — no auth (inherently trusted).
 			transport := &mcp.StdioTransport{}
 			if err := s.Run(a.ctx, transport); err != nil {
 				a.logger.Errorf("Stdio server error: %v", err)
@@ -87,6 +151,10 @@ func (a *Application) Start() error {
 		addr := fmt.Sprintf("%s:%d", a.cfg.Host, port)
 		a.logger.Infof("Starting SSE server on %s", addr)
 
+		if a.cfg.AuthConfig.Enabled {
+			a.logger.Warn("SSE transport with auth: TokenInfo will not propagate to tool handlers (SDK v1.1.0 limitation). Consider using 'stream' transport instead.")
+		}
+
 		sseHandler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server {
 			// Parse configuration from query parameters
 			token := r.URL.Query().Get("SMARTTHINGS_TOKEN")
@@ -99,45 +167,17 @@ func (a *Application) Start() error {
 				baseURL = a.cfg.BaseURL
 			}
 
-			// If no token is provided, we can't create a valid client.
-			// However, the SDK expects a server to be returned.
-			// We'll create one, but tools might fail if they need the token.
-			// Ideally, we should probably return nil to signal 400 Bad Request if token is missing,
-			// but for now let's fallback or proceed.
 			if token == "" {
 				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
-				// We proceed with empty token to allow tool discovery
 			}
 
-			// Initialize SmartThings Client for this session
 			stClient := smartthings.NewClient(token, baseURL)
-
-			// Initialize MCP Server for this session
 			return srv.NewMCPServer(a.logger, stClient)
 		}, nil)
 
-		mux := http.NewServeMux()
-		mux.Handle("/mcp", sseHandler)
-		mux.Handle("/", sseHandler) // For compatibility
-
-		// CORS middleware
-		corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id, mcp-protocol-version")
-			w.Header().Set("Access-Control-Expose-Headers", "mcp-session-id, mcp-protocol-version")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			mux.ServeHTTP(w, r)
-		})
-
 		a.httpServer = &http.Server{
 			Addr:    addr,
-			Handler: corsHandler,
+			Handler: a.setupMux(sseHandler, authMiddleware),
 		}
 
 		go func() {
@@ -149,6 +189,7 @@ func (a *Application) Start() error {
 	case "stream":
 		addr := fmt.Sprintf("%s:%d", a.cfg.Host, a.cfg.Port)
 		a.logger.Infof("Starting Stream server on %s", addr)
+
 		streamHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 			// Parse configuration from query parameters
 			token := r.URL.Query().Get("smartThingsToken")
@@ -163,19 +204,15 @@ func (a *Application) Start() error {
 
 			if token == "" {
 				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
-				// We proceed with empty token to allow tool discovery
 			}
 
-			// Initialize SmartThings Client for this session
 			stClient := smartthings.NewClient(token, baseURL)
-
-			// Initialize MCP Server for this session
 			return srv.NewMCPServer(a.logger, stClient)
 		}, nil)
 
 		a.httpServer = &http.Server{
 			Addr:    addr,
-			Handler: streamHandler,
+			Handler: a.setupMux(streamHandler, authMiddleware),
 		}
 
 		go func() {
@@ -205,6 +242,10 @@ func (a *Application) Start() error {
 
 func (a *Application) Stop() {
 	a.cancel()
+
+	if a.authCleanup != nil {
+		a.authCleanup()
+	}
 
 	if a.httpServer != nil {
 		a.logger.Info("Shutting down HTTP server...")
