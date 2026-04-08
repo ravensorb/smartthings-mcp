@@ -5,6 +5,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langowarny/smartthings-mcp/internal/smartthings"
+	"github.com/langowarny/smartthings-mcp/internal/version"
 )
 
 // NewMCPServer creates and initializes a new MCP server.
@@ -12,7 +13,7 @@ func NewMCPServer(logger *zap.SugaredLogger, client *smartthings.Client) *mcp.Se
 	// Initialize the server implementation info
 	impl := &mcp.Implementation{
 		Name:    "SmartThings MCP",
-		Version: "0.1.0",
+		Version: version.Version,
 	}
 
 	// Create the server instance

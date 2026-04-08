@@ -6,16 +6,24 @@ import (
 	"os"
 
 	"github.com/langowarny/smartthings-mcp/internal/app"
+	"github.com/langowarny/smartthings-mcp/internal/version"
 )
 
 func main() {
 	var transport string
 	var host string
 	var port int
+	var showVersion bool
 	flag.StringVar(&transport, "transport", "stream", "Transport to use: stdio|sse|stream")
 	flag.StringVar(&host, "host", "0.0.0.0", "Host to bind (default 0.0.0.0)")
 	flag.IntVar(&port, "port", 8081, "Port to listen on for SSE transport")
+	flag.BoolVar(&showVersion, "version", false, "Print version and exit")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("smartthings-mcp %s (commit: %s, built: %s)\n", version.Version, version.Commit, version.Date)
+		os.Exit(0)
+	}
 
 	cfg := app.Config{
 		Transport: transport,
