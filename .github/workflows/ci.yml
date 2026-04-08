@@ -226,10 +226,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: smartthings-mcp-*
           merge-multiple: true
 
       - name: Validate version tag
