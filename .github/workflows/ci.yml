@@ -244,6 +244,7 @@ jobs:
         id: changelog
         uses: LiquidLogicLabs/git-action-release-changelog-builder@v3
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           mode: COMMIT
           from-tag: "-1"
 
