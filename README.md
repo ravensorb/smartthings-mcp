@@ -107,10 +107,51 @@ Restart Claude Desktop. You should see the MCP hammer icon in the input area con
 
 ## Environment Variables
 
+### SmartThings API
+
 | Name | Default | Description |
 |------|---------|-------------|
 | `SMARTTHINGS_TOKEN` | - | Bearer token for SmartThings API. **Required for operations**, but server starts without it for tool discovery |
 | `ST_BASE_URL` | `https://api.smartthings.com` | Override for testing / mock servers |
+
+### MCP Server Authentication (Optional)
+
+Protect HTTP transports (SSE, StreamableHTTP) with JWT bearer token validation. The server acts as an OAuth 2.0 Resource Server, validating tokens issued by an external Identity Provider (Authentik, Keycloak, Auth0, etc.). Stdio transport is unaffected (inherently trusted).
+
+**OIDC Discovery (recommended)** - just provide the issuer URL:
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `MCP_AUTH_ENABLED` | `false` | Set to `true` to enable JWT auth |
+| `MCP_AUTH_OIDC_ISSUER_URL` | - | OIDC issuer URL (discovery auto-resolves `/.well-known/openid-configuration`) |
+| `MCP_AUTH_AUDIENCE` | - | Expected `aud` claim (typically the OAuth client ID in your IdP) |
+| `MCP_AUTH_SCOPES` | - | Comma-separated required scopes (optional) |
+| `MCP_AUTH_RESOURCE_ID` | - | Enables RFC 9728 metadata at `/.well-known/oauth-protected-resource` (optional) |
+
+**Manual fallback** - for providers without OIDC discovery:
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `MCP_AUTH_JWKS_URL` | - | JWKS endpoint URL |
+| `MCP_AUTH_ISSUER` | - | Expected `iss` claim |
+
+#### Example: Authentik
+
+```bash
+MCP_AUTH_ENABLED=true
+MCP_AUTH_OIDC_ISSUER_URL="https://authentik.example.com/application/o/smartthings-mcp"
+MCP_AUTH_AUDIENCE="smartthings-mcp"
+```
+
+#### Example: Keycloak
+
+```bash
+MCP_AUTH_ENABLED=true
+MCP_AUTH_OIDC_ISSUER_URL="https://keycloak.example.com/realms/myrealm"
+MCP_AUTH_AUDIENCE="smartthings-mcp"
+```
+
+When auth is enabled, MCP clients must include an `Authorization: Bearer <token>` header. Requests without a valid token receive a `401 Unauthorized` response.
 
 ## Running standalone
 
