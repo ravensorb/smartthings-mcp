@@ -44,6 +44,7 @@ logs/
 *.toml
 
 !smithery.yaml
+!docker-compose.yml
 !.github/workflows/*.yml
 
 # act local runner (actual secrets/env stay ignored — only examples are tracked)
