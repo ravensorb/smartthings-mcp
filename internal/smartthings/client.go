@@ -74,6 +74,9 @@ func (c *Client) GetLocation(id string) (*Location, error) {
 	return &loc, nil
 }
 
+// DevicePreferences wraps /preferences response.
+type DevicePreferences map[string]interface{}
+
 // DeviceStatus wraps /status response (partial).
 type DeviceStatus map[string]interface{}
 
@@ -95,6 +98,44 @@ func (c *Client) GetDevice(id string) (*Device, error) {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// DeviceHealth represents the health status of a device.
+type DeviceHealth struct {
+	DeviceID string `json:"deviceId"`
+	State    string `json:"state"` // e.g., "ONLINE", "OFFLINE"
+}
+
+// GetDevicePreferences returns preferences for a device.
+func (c *Client) GetDevicePreferences(id string) (DevicePreferences, error) {
+	var prefs DevicePreferences
+	if err := c.get(fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs); err != nil {
+		return nil, err
+	}
+	return prefs, nil
+}
+
+// UpdateDevicePreferences writes preferences for a device.
+func (c *Client) UpdateDevicePreferences(id string, prefs map[string]interface{}) (DevicePreferences, error) {
+	var out DevicePreferences
+	if err := c.put(fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetDeviceHealth returns the health status of a device.
+func (c *Client) GetDeviceHealth(id string) (*DeviceHealth, error) {
+	var health DeviceHealth
+	if err := c.get(fmt.Sprintf("/v1/devices/%s/health", id), &health); err != nil {
+		return nil, err
+	}
+	return &health, nil
+}
+
+// DeleteDevice removes a device.
+func (c *Client) DeleteDevice(id string) error {
+	return c.delete(fmt.Sprintf("/v1/devices/%s", id))
 }
 
 // GetDeviceStatus returns live status of a device.
@@ -190,6 +231,24 @@ func (c *Client) CreateRoom(locationID, name string) (*Room, error) {
 	return &room, nil
 }
 
+// GetRoom returns a single room.
+func (c *Client) GetRoom(locationID, roomID string) (*Room, error) {
+	var room Room
+	if err := c.get(fmt.Sprintf("/v1/locations/%s/rooms/%s", locationID, roomID), &room); err != nil {
+		return nil, err
+	}
+	return &room, nil
+}
+
+// UpdateRoom updates a room (e.g. rename).
+func (c *Client) UpdateRoom(locationID, roomID string, body map[string]interface{}) (*Room, error) {
+	var room Room
+	if err := c.put(fmt.Sprintf("/v1/locations/%s/rooms/%s", locationID, roomID), body, &room); err != nil {
+		return nil, err
+	}
+	return &room, nil
+}
+
 // DeleteRoom deletes a room.
 func (c *Client) DeleteRoom(locationID, roomID string) error {
 	return c.delete(fmt.Sprintf("/v1/locations/%s/rooms/%s", locationID, roomID))
@@ -197,9 +256,9 @@ func (c *Client) DeleteRoom(locationID, roomID string) error {
 
 // Rule represents a SmartThings rule.
 type Rule struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	// Additional fields like actions can be added if needed, keeping it simple for now.
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	Actions interface{} `json:"actions,omitempty"`
 }
 
 // ListRules returns rules.
@@ -211,6 +270,29 @@ func (c *Client) ListRules() ([]Rule, error) {
 		return nil, err
 	}
 	return resp.Items, nil
+}
+
+// GetRule returns a single rule by ID.
+func (c *Client) GetRule(ruleID string) (*Rule, error) {
+	var rule Rule
+	if err := c.get(fmt.Sprintf("/v1/rules/%s", ruleID), &rule); err != nil {
+		return nil, err
+	}
+	return &rule, nil
+}
+
+// CreateRule creates a new rule.
+func (c *Client) CreateRule(body interface{}) (*Rule, error) {
+	var rule Rule
+	if err := c.post("/v1/rules", body, &rule); err != nil {
+		return nil, err
+	}
+	return &rule, nil
+}
+
+// DeleteRule deletes a rule.
+func (c *Client) DeleteRule(ruleID string) error {
+	return c.delete(fmt.Sprintf("/v1/rules/%s", ruleID))
 }
 
 // Hub represents a SmartThings hub.
@@ -421,6 +503,41 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 		buf = bytes.NewBuffer(nil)
 	}
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+path, buf)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("API request failed: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= 300 {
+		return fmt.Errorf("SmartThings API error: %s (path: %s)", res.Status, path)
+	}
+	if out != nil {
+		return json.NewDecoder(res.Body).Decode(out)
+	}
+	return nil
+}
+
+func (c *Client) put(path string, body interface{}, out interface{}) error {
+	if c.token == "" {
+		return fmt.Errorf("SmartThings token not configured. Please set the SMARTTHINGS_TOKEN environment variable")
+	}
+
+	var buf *bytes.Buffer
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		buf = bytes.NewBuffer(data)
+	} else {
+		buf = bytes.NewBuffer(nil)
+	}
+	req, err := http.NewRequest(http.MethodPut, c.baseURL+path, buf)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

@@ -144,6 +144,176 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		}, nil
 	})
 
+	// get_device_preferences
+	s.AddTool(&mcp.Tool{
+		Name:        "get_device_preferences",
+		Description: "Get preferences for a SmartThings device",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the device to retrieve preferences for",
+				},
+			},
+			"required": []string{"device_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		id, _ := args["device_id"].(string)
+		if id == "" {
+			return errorResult("device_id is required"), nil
+		}
+		prefs, err := client.GetDevicePreferences(id)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(prefs)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// update_device_preferences
+	s.AddTool(&mcp.Tool{
+		Name:        "update_device_preferences",
+		Description: "Update preferences for a SmartThings device (e.g., motion sensitivity, LED settings)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the device",
+				},
+				"preferences": map[string]interface{}{
+					"type":        "object",
+					"description": "Key-value map of preferences to set (e.g., {\"parameter101\": 3}). Use get_device_preferences first to discover available keys.",
+				},
+			},
+			"required": []string{"device_id", "preferences"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		id, _ := args["device_id"].(string)
+		if id == "" {
+			return errorResult("device_id is required"), nil
+		}
+		prefs, ok := args["preferences"].(map[string]interface{})
+		if !ok || len(prefs) == 0 {
+			return errorResult("preferences must be a non-empty object"), nil
+		}
+		result, err := client.UpdateDevicePreferences(id, prefs)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(result)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 1.0,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// get_device_health
+	s.AddTool(&mcp.Tool{
+		Name:        "get_device_health",
+		Description: "Check if a SmartThings device is online or offline",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the device",
+				},
+			},
+			"required": []string{"device_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		id, _ := args["device_id"].(string)
+		if id == "" {
+			return errorResult("device_id is required"), nil
+		}
+		health, err := client.GetDeviceHealth(id)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(health)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.9,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// delete_device
+	s.AddTool(&mcp.Tool{
+		Name:        "delete_device",
+		Description: "Remove a SmartThings device",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"device_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the device to remove",
+				},
+			},
+			"required": []string{"device_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		id, _ := args["device_id"].(string)
+		if id == "" {
+			return errorResult("device_id is required"), nil
+		}
+		if err := client.DeleteDevice(id); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "ok",
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 1.0,
+					},
+				},
+			},
+		}, nil
+	})
+
 	// list_device_capabilities
 	s.AddTool(&mcp.Tool{
 		Name:        "list_device_capabilities",
@@ -291,6 +461,47 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		}, nil
 	})
 
+	// get_location
+	s.AddTool(&mcp.Tool{
+		Name:        "get_location",
+		Description: "Get details for a SmartThings location",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the location",
+				},
+			},
+			"required": []string{"location_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		if locID == "" {
+			return errorResult("location_id is required"), nil
+		}
+		loc, err := client.GetLocation(locID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(loc)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.7,
+					},
+				},
+			},
+		}, nil
+	})
+
 	// execute_scene
 	s.AddTool(&mcp.Tool{
 		Name:        "execute_scene",
@@ -390,6 +601,103 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 					Annotations: &mcp.Annotations{
 						Audience: []mcp.Role{mcp.Role("assistant")},
 						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// get_room
+	s.AddTool(&mcp.Tool{
+		Name:        "get_room",
+		Description: "Get details of a room in a SmartThings location",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the location",
+				},
+				"room_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the room",
+				},
+			},
+			"required": []string{"location_id", "room_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		roomID, _ := args["room_id"].(string)
+		if locID == "" || roomID == "" {
+			return errorResult("location_id and room_id are required"), nil
+		}
+		room, err := client.GetRoom(locID, roomID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(room)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.7,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// update_room
+	s.AddTool(&mcp.Tool{
+		Name:        "update_room",
+		Description: "Update a room in a SmartThings location (e.g., rename)",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the location",
+				},
+				"room_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the room to update",
+				},
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "The new name for the room",
+				},
+			},
+			"required": []string{"location_id", "room_id", "name"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		locID, _ := args["location_id"].(string)
+		roomID, _ := args["room_id"].(string)
+		name, _ := args["name"].(string)
+		if locID == "" || roomID == "" || name == "" {
+			return errorResult("location_id, room_id, and name are required"), nil
+		}
+		room, err := client.UpdateRoom(locID, roomID, map[string]interface{}{"name": name})
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(room)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
 					},
 				},
 			},
@@ -506,6 +814,136 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 					Annotations: &mcp.Annotations{
 						Audience: []mcp.Role{mcp.Role("assistant")},
 						Priority: 0.6,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// get_rule
+	s.AddTool(&mcp.Tool{
+		Name:        "get_rule",
+		Description: "Get details of a SmartThings automation rule",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"rule_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the rule",
+				},
+			},
+			"required": []string{"rule_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		ruleID, _ := args["rule_id"].(string)
+		if ruleID == "" {
+			return errorResult("rule_id is required"), nil
+		}
+		rule, err := client.GetRule(ruleID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(rule)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.7,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// create_rule
+	s.AddTool(&mcp.Tool{
+		Name:        "create_rule",
+		Description: "Create a SmartThings automation rule",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"name": map[string]interface{}{
+					"type":        "string",
+					"description": "The name of the rule",
+				},
+				"actions": map[string]interface{}{
+					"type":        "array",
+					"description": "The rule actions definition (SmartThings rule actions array)",
+				},
+			},
+			"required": []string{"name", "actions"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		name, _ := args["name"].(string)
+		actions := args["actions"]
+		if name == "" || actions == nil {
+			return errorResult("name and actions are required"), nil
+		}
+		body := map[string]interface{}{
+			"name":    name,
+			"actions": actions,
+		}
+		rule, err := client.CreateRule(body)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		data, _ := json.Marshal(rule)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: string(data),
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
+					},
+				},
+			},
+		}, nil
+	})
+
+	// delete_rule
+	s.AddTool(&mcp.Tool{
+		Name:        "delete_rule",
+		Description: "Delete a SmartThings automation rule",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"rule_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique identifier of the rule to delete",
+				},
+			},
+			"required": []string{"rule_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]interface{}
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		ruleID, _ := args["rule_id"].(string)
+		if ruleID == "" {
+			return errorResult("rule_id is required"), nil
+		}
+		if err := client.DeleteRule(ruleID); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{
+					Text: "ok",
+					Annotations: &mcp.Annotations{
+						Audience: []mcp.Role{mcp.Role("user"), mcp.Role("assistant")},
+						Priority: 0.8,
 					},
 				},
 			},
