@@ -169,10 +169,15 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 	if a.cfg.AuthConfig.ResourceID != "" {
 		topMux.Handle("GET /.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
 	}
-	// Redirect OIDC discovery to the authorization server so clients
-	// that fetch /.well-known/openid-configuration from this host can
-	// find the IdP's metadata.
-	if issuer := a.cfg.AuthConfig.OIDCIssuerURL; issuer != "" {
+	// Proxy upstream IdP discovery with rewritten issuer so RFC 8414
+	// clients that prepend /.well-known/oauth-authorization-server can
+	// validate the issuer against the MCP server's ResourceID.
+	if a.cfg.AuthConfig.OIDCIssuerURL != "" && a.cfg.AuthConfig.ResourceID != "" {
+		proxy := auth.NewAuthServerMetadataProxy(a.cfg.AuthConfig.OIDCIssuerURL, a.cfg.AuthConfig.ResourceID, a.logger)
+		topMux.Handle("GET /.well-known/oauth-authorization-server", proxy)
+		topMux.Handle("GET /.well-known/openid-configuration", proxy)
+		a.logger.Infof("Auth-server metadata proxy enabled: upstream=%s, issuer-override=%s", a.cfg.AuthConfig.OIDCIssuerURL, a.cfg.AuthConfig.ResourceID)
+	} else if issuer := a.cfg.AuthConfig.OIDCIssuerURL; issuer != "" {
 		target := issuer + "/.well-known/openid-configuration"
 		topMux.Handle("GET /.well-known/openid-configuration", http.RedirectHandler(target, http.StatusFound))
 	}

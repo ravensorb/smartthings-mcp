@@ -3,7 +3,6 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 )
 
 // ProtectedResourceMetadata represents RFC 9728 Protected Resource Metadata.
@@ -20,18 +19,16 @@ type ProtectedResourceMetadata struct {
 // so clients can discover how to authenticate.
 func NewProtectedResourceHandler(cfg AuthConfig) http.HandlerFunc {
 	authServers := cfg.AuthorizationServers
+	if len(authServers) == 0 && cfg.ResourceID != "" && cfg.OIDCIssuerURL != "" {
+		// Point clients at the MCP server itself, which proxies the
+		// upstream IdP's discovery document with a rewritten issuer.
+		authServers = []string{cfg.ResourceID}
+	}
 	if len(authServers) == 0 && cfg.OIDCIssuerURL != "" {
 		authServers = []string{cfg.OIDCIssuerURL}
 	}
 	if len(authServers) == 0 && cfg.Issuer != "" {
 		authServers = []string{cfg.Issuer}
-	}
-	// Ensure trailing slash on authorization server URLs so clients can
-	// append /.well-known/openid-configuration for OIDC discovery.
-	for i, s := range authServers {
-		if !strings.HasSuffix(s, "/") {
-			authServers[i] = s + "/"
-		}
 	}
 
 	meta := ProtectedResourceMetadata{
