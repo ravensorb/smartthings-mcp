@@ -17,6 +17,11 @@ const (
 	acceptSmartThingsV = "application/vnd.smartthings+json;v=20170916"
 )
 
+// stDeviceHeaders is the Accept header override required by the SmartThings
+// API for device list/get/update/preferences endpoints, matching the official
+// SmartThings Core SDK behavior.
+var stDeviceHeaders = map[string]string{"Accept": acceptSmartThingsV}
+
 // Client is a minimal SmartThings REST API client.
 // It is **not** feature-complete—only endpoints needed by the MCP server.
 
@@ -90,7 +95,7 @@ func (c *Client) ListDevices(ctx context.Context) ([]Device, error) {
 	var resp struct {
 		Items []Device `json:"items"`
 	}
-	if err := c.get(ctx, "/v1/devices", &resp); err != nil {
+	if err := c.get(ctx, "/v1/devices", &resp, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return resp.Items, nil
@@ -99,7 +104,7 @@ func (c *Client) ListDevices(ctx context.Context) ([]Device, error) {
 // GetDevice returns metadata for a device.
 func (c *Client) GetDevice(ctx context.Context, id string) (*Device, error) {
 	var d Device
-	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s", id), &d); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s", id), &d, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return &d, nil
@@ -115,7 +120,7 @@ type DeviceHealth struct {
 // The preferences endpoint requires the versioned SmartThings Accept header.
 func (c *Client) GetDevicePreferences(ctx context.Context, id string) (DevicePreferences, error) {
 	var prefs DevicePreferences
-	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs, map[string]string{"Accept": acceptSmartThingsV}); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return prefs, nil
@@ -125,7 +130,7 @@ func (c *Client) GetDevicePreferences(ctx context.Context, id string) (DevicePre
 // The preferences endpoint requires the versioned SmartThings Accept header.
 func (c *Client) UpdateDevicePreferences(ctx context.Context, id string, prefs map[string]any) (DevicePreferences, error) {
 	var out DevicePreferences
-	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out, map[string]string{"Accept": acceptSmartThingsV}); err != nil {
+	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -181,7 +186,7 @@ func (c *Client) ListDevicesByLocation(ctx context.Context, locationID string) (
 		Items []Device `json:"items"`
 	}
 	path := fmt.Sprintf("/v1/devices?locationId=%s", locationID)
-	if err := c.get(ctx, path, &resp); err != nil {
+	if err := c.get(ctx, path, &resp, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return resp.Items, nil
@@ -523,7 +528,7 @@ func (c *Client) SetCurrentMode(ctx context.Context, locationID, modeID string) 
 // UpdateDevice updates device properties (e.g., label, roomId).
 func (c *Client) UpdateDevice(ctx context.Context, id string, body map[string]any) (*Device, error) {
 	var d Device
-	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s", id), body, &d); err != nil {
+	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s", id), body, &d, stDeviceHeaders); err != nil {
 		return nil, err
 	}
 	return &d, nil
