@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 // ProtectedResourceMetadata represents RFC 9728 Protected Resource Metadata.
@@ -24,6 +25,13 @@ func NewProtectedResourceHandler(cfg AuthConfig) http.HandlerFunc {
 	}
 	if len(authServers) == 0 && cfg.Issuer != "" {
 		authServers = []string{cfg.Issuer}
+	}
+	// Ensure trailing slash on authorization server URLs so clients can
+	// append /.well-known/openid-configuration for OIDC discovery.
+	for i, s := range authServers {
+		if !strings.HasSuffix(s, "/") {
+			authServers[i] = s + "/"
+		}
 	}
 
 	meta := ProtectedResourceMetadata{

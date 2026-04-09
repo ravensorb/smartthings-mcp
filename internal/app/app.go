@@ -169,6 +169,13 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 	if a.cfg.AuthConfig.ResourceID != "" {
 		topMux.Handle("GET /.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
 	}
+	// Redirect OIDC discovery to the authorization server so clients
+	// that fetch /.well-known/openid-configuration from this host can
+	// find the IdP's metadata.
+	if issuer := a.cfg.AuthConfig.OIDCIssuerURL; issuer != "" {
+		target := issuer + "/.well-known/openid-configuration"
+		topMux.Handle("GET /.well-known/openid-configuration", http.RedirectHandler(target, http.StatusFound))
+	}
 	topMux.Handle("/", authMux)
 
 	return a.corsMiddleware(topMux)
