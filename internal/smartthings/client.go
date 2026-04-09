@@ -12,6 +12,9 @@ import (
 
 const (
 	BaseURL = "https://api.smartthings.com"
+
+	acceptJSON         = "application/json"
+	acceptSmartThingsV = "application/vnd.smartthings+json;v=20170916"
 )
 
 // Client is a minimal SmartThings REST API client.
@@ -109,18 +112,20 @@ type DeviceHealth struct {
 }
 
 // GetDevicePreferences returns preferences for a device.
+// The preferences endpoint requires the versioned SmartThings Accept header.
 func (c *Client) GetDevicePreferences(ctx context.Context, id string) (DevicePreferences, error) {
 	var prefs DevicePreferences
-	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs); err != nil {
+	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs, map[string]string{"Accept": acceptSmartThingsV}); err != nil {
 		return nil, err
 	}
 	return prefs, nil
 }
 
 // UpdateDevicePreferences writes preferences for a device.
+// The preferences endpoint requires the versioned SmartThings Accept header.
 func (c *Client) UpdateDevicePreferences(ctx context.Context, id string, prefs map[string]any) (DevicePreferences, error) {
 	var out DevicePreferences
-	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out); err != nil {
+	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out, map[string]string{"Accept": acceptSmartThingsV}); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -718,7 +723,7 @@ func (c *Client) GetSchedule(ctx context.Context, installedAppID, scheduleName s
 
 // Helpers
 
-func (c *Client) get(ctx context.Context, path string, out any) error {
+func (c *Client) get(ctx context.Context, path string, out any, extraHeaders ...map[string]string) error {
 	if c.token == "" {
 		return fmt.Errorf("SmartThings token not configured. Please set the SMARTTHINGS_TOKEN environment variable")
 	}
@@ -728,7 +733,12 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", acceptJSON)
+	for _, h := range extraHeaders {
+		for k, v := range h {
+			req.Header.Set(k, v)
+		}
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
@@ -778,7 +788,7 @@ func (c *Client) post(ctx context.Context, path string, body any, out any) error
 	return nil
 }
 
-func (c *Client) put(ctx context.Context, path string, body any, out any) error {
+func (c *Client) put(ctx context.Context, path string, body any, out any, extraHeaders ...map[string]string) error {
 	if c.token == "" {
 		return fmt.Errorf("SmartThings token not configured. Please set the SMARTTHINGS_TOKEN environment variable")
 	}
@@ -799,7 +809,12 @@ func (c *Client) put(ctx context.Context, path string, body any, out any) error 
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", acceptJSON)
+	for _, h := range extraHeaders {
+		for k, v := range h {
+			req.Header.Set(k, v)
+		}
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
