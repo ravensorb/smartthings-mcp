@@ -427,6 +427,27 @@ func (c *Client) GetHubHealth(ctx context.Context, hubID string) (*HubHealth, er
 	return &health, nil
 }
 
+// Driver represents an Edge driver installed on a SmartThings hub.
+type Driver struct {
+	DriverID    string `json:"driverId"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Version     string `json:"version,omitempty"`
+	ChannelID   string `json:"channelId,omitempty"`
+	Developer   string `json:"developer,omitempty"`
+}
+
+// ListHubDrivers returns Edge drivers installed on a hub.
+// The hubDeviceID is the device ID of the hub (from ListDevices where type is
+// HUB), not the hub ID from ListHubs.
+func (c *Client) ListHubDrivers(ctx context.Context, hubDeviceID string) ([]Driver, error) {
+	var drivers []Driver
+	if err := c.get(ctx, fmt.Sprintf("/v1/hubdevices/%s/drivers", hubDeviceID), &drivers); err != nil {
+		return nil, err
+	}
+	return drivers, nil
+}
+
 // Subscription represents a SmartThings subscription.
 type Subscription struct {
 	ID               string `json:"id"`
@@ -561,6 +582,57 @@ func (c *Client) GetCapability(ctx context.Context, capabilityID string, version
 		return nil, err
 	}
 	return &cap, nil
+}
+
+// DeviceCapabilityDetail holds a capability's full schema along with the
+// component it was found on.
+type DeviceCapabilityDetail struct {
+	Component  string               `json:"component"`
+	Capability CapabilityDefinition `json:"capability"`
+}
+
+// GetDeviceCapabilities fetches a device and resolves all capability schemas
+// for every component. Capabilities that fail to resolve are included with an
+// error note in the Status field.
+func (c *Client) GetDeviceCapabilities(ctx context.Context, deviceID string) ([]DeviceCapabilityDetail, error) {
+	dev, err := c.GetDevice(ctx, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device %s: %w", deviceID, err)
+	}
+
+	type capKey struct {
+		id      string
+		version int
+	}
+	seen := make(map[capKey]*CapabilityDefinition)
+	var results []DeviceCapabilityDetail
+
+	for _, comp := range dev.Components {
+		for _, cap := range comp.Capabilities {
+			v := cap.Version
+			if v == 0 {
+				v = 1
+			}
+			key := capKey{id: cap.ID, version: v}
+			if _, ok := seen[key]; !ok {
+				capDef, err := c.GetCapability(ctx, cap.ID, v)
+				if err != nil {
+					capDef = &CapabilityDefinition{
+						ID:      cap.ID,
+						Version: v,
+						Status:  fmt.Sprintf("error: %v", err),
+					}
+				}
+				seen[key] = capDef
+			}
+			results = append(results, DeviceCapabilityDetail{
+				Component:  comp.ID,
+				Capability: *seen[key],
+			})
+		}
+	}
+
+	return results, nil
 }
 
 // ---------- Modes ----------

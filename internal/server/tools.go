@@ -331,6 +331,37 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		return marshalResult(caps, []mcp.Role{mcp.Role("assistant")}, 0.5)
 	})
 
+	// get_device_capabilities
+	s.AddTool(&mcp.Tool{
+		Name:        "get_device_capabilities",
+		Description: "Fetch full capability schemas (attributes, commands, parameters) for all capabilities on a SmartThings device. Unlike list_device_capabilities which returns only IDs, this resolves each capability's complete definition including custom capability commands.",
+		Annotations: readOnly,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"device_id": map[string]any{
+					"type":        "string",
+					"description": "The unique identifier of the device to fetch capability schemas for",
+				},
+			},
+			"required": []string{"device_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]any
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		id, _ := args["device_id"].(string)
+		if id == "" {
+			return errorResult("device_id is required"), nil
+		}
+		caps, err := client.GetDeviceCapabilities(ctx, id)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return marshalResult(caps, []mcp.Role{mcp.Role("user"), mcp.Role("assistant")}, 0.8)
+	})
+
 	// send_device_command
 	s.AddTool(&mcp.Tool{
 		Name:        "send_device_command",
@@ -836,6 +867,37 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 			return errorResult(err.Error()), nil
 		}
 		return marshalResult(health, []mcp.Role{mcp.Role("user"), mcp.Role("assistant")}, 0.9)
+	})
+
+	// list_hub_drivers
+	s.AddTool(&mcp.Tool{
+		Name:        "list_hub_drivers",
+		Description: "List Edge drivers installed on a SmartThings hub. The hub_id is the device ID of the hub (from list_devices where type is HUB), not the hub ID from list_hubs.",
+		Annotations: readOnly,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"hub_id": map[string]any{
+					"type":        "string",
+					"description": "The device ID of the hub (UUID from list_devices where type is HUB)",
+				},
+			},
+			"required": []string{"hub_id"},
+		},
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var args map[string]any
+		if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+			return errorResult("invalid arguments"), nil
+		}
+		hubID, _ := args["hub_id"].(string)
+		if hubID == "" {
+			return errorResult("hub_id is required"), nil
+		}
+		drivers, err := client.ListHubDrivers(ctx, hubID)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return marshalResult(drivers, []mcp.Role{mcp.Role("user"), mcp.Role("assistant")}, 0.7)
 	})
 
 	// list_subscriptions
