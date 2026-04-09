@@ -125,28 +125,8 @@ func (a *Application) newServerFactory() func(r *http.Request) *mcp.Server {
 	}
 }
 
-// setupMux creates an HTTP mux with auth middleware, routing /sse to the SSE
-// handler, /mcp to the stream handler, and / to the primary transport.
-func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTransport string, authMiddleware func(http.Handler) http.Handler) http.Handler {
-	mux := http.NewServeMux()
-
-	// RFC 9728 metadata endpoint (unauthenticated).
-	if a.cfg.AuthConfig.ResourceID != "" {
-		mux.Handle("/.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
-	}
-
-	// Route /sse → SSE handler, /mcp → stream handler.
-	mux.Handle("/sse", authMiddleware(sseHandler))
-	mux.Handle("/mcp", authMiddleware(streamHandler))
-
-	// Default route uses whichever transport was selected.
-	if primaryTransport == "sse" {
-		mux.Handle("/", authMiddleware(sseHandler))
-	} else {
-		mux.Handle("/", authMiddleware(streamHandler))
-	}
-
-	// CORS wraps everything (outermost).
+// corsMiddleware wraps a handler with CORS headers and request/response logging.
+func (a *Application) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		a.logger.Debugf("Request: %s %s from %s (session: %s)", r.Method, r.URL.Path, r.RemoteAddr, r.Header.Get("mcp-session-id"))
@@ -162,10 +142,35 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 		}
 
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-		mux.ServeHTTP(sw, r)
+		next.ServeHTTP(sw, r)
 
 		a.logger.Debugf("Response: %s %s %d (%s)", r.Method, r.URL.Path, sw.status, time.Since(start).Round(time.Millisecond))
 	})
+}
+
+// setupMux creates an HTTP mux with auth middleware, routing /sse to the SSE
+// handler, /mcp to the stream handler, and / to the primary transport.
+// Unauthenticated endpoints (RFC 9728 metadata) are registered on a top-level
+// mux that delegates auth-protected paths to an inner mux.
+func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTransport string, authMiddleware func(http.Handler) http.Handler) http.Handler {
+	// Inner mux: all routes require auth.
+	authMux := http.NewServeMux()
+	authMux.Handle("/sse", authMiddleware(sseHandler))
+	authMux.Handle("/mcp", authMiddleware(streamHandler))
+	if primaryTransport == "sse" {
+		authMux.Handle("/", authMiddleware(sseHandler))
+	} else {
+		authMux.Handle("/", authMiddleware(streamHandler))
+	}
+
+	// Outer mux: unauthenticated routes first, then delegate to authMux.
+	topMux := http.NewServeMux()
+	if a.cfg.AuthConfig.ResourceID != "" {
+		topMux.Handle("GET /.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
+	}
+	topMux.Handle("/", authMux)
+
+	return a.corsMiddleware(topMux)
 }
 
 func (a *Application) Start() error {
