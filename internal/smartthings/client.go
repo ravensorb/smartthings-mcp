@@ -4,10 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+)
+
+// ErrPreferencesUnsupported is returned when the per-device preferences
+// endpoint responds with 406 Not Acceptable. This is a known SmartThings API
+// limitation: the endpoint is undocumented and non-functional for most (or all)
+// device types.
+var ErrPreferencesUnsupported = errors.New(
+	"the SmartThings per-device preferences endpoint returned 406 Not Acceptable; " +
+		"this endpoint is undocumented and may not be supported for this device type",
 )
 
 const (
@@ -51,6 +62,9 @@ type Device struct {
 	Name       string `json:"name"`
 	Label      string `json:"label"`
 	DeviceType string `json:"deviceTypeName"`
+	Profile    struct {
+		ID string `json:"id"`
+	} `json:"profile,omitempty"`
 	Components []struct {
 		ID           string `json:"id"`
 		Capabilities []struct {
@@ -58,6 +72,24 @@ type Device struct {
 			Version int    `json:"version"`
 		} `json:"capabilities"`
 	} `json:"components,omitempty"`
+}
+
+// DeviceProfile represents a SmartThings device profile.
+type DeviceProfile struct {
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Preferences []ProfilePreference  `json:"preferences"`
+}
+
+// ProfilePreference is a preference definition from a device profile.
+type ProfilePreference struct {
+	PreferenceID   string `json:"preferenceId"`
+	Name           string `json:"name"`
+	Title          string `json:"title"`
+	Description    string `json:"description"`
+	Required       bool   `json:"required"`
+	PreferenceType string `json:"preferenceType"`
+	Definition     any    `json:"definition"`
 }
 
 // Location represents a SmartThings location.
@@ -110,6 +142,15 @@ func (c *Client) GetDevice(ctx context.Context, id string) (*Device, error) {
 	return &d, nil
 }
 
+// GetDeviceProfile returns a device profile by ID.
+func (c *Client) GetDeviceProfile(ctx context.Context, profileID string) (*DeviceProfile, error) {
+	var p DeviceProfile
+	if err := c.get(ctx, fmt.Sprintf("/v1/deviceprofiles/%s", profileID), &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // DeviceHealth represents the health status of a device.
 type DeviceHealth struct {
 	DeviceID string `json:"deviceId"`
@@ -117,20 +158,67 @@ type DeviceHealth struct {
 }
 
 // GetDevicePreferences returns preferences for a device.
-// The preferences endpoint requires the versioned SmartThings Accept header.
+// The per-device preferences endpoint is undocumented and returns 406 for most
+// device types. When that happens, this method falls back to fetching the
+// device's profile and returning the preference definitions (schemas with
+// defaults) rather than current values.
 func (c *Client) GetDevicePreferences(ctx context.Context, id string) (DevicePreferences, error) {
 	var prefs DevicePreferences
 	if err := c.get(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), &prefs, stDeviceHeaders); err != nil {
+		if strings.Contains(err.Error(), "406") {
+			return c.getDevicePreferencesFromProfile(ctx, id)
+		}
 		return nil, err
 	}
 	return prefs, nil
 }
 
+// getDevicePreferencesFromProfile is the fallback for GetDevicePreferences.
+// It fetches the device's profile and returns preference definitions.
+func (c *Client) getDevicePreferencesFromProfile(ctx context.Context, deviceID string) (DevicePreferences, error) {
+	dev, err := c.GetDevice(ctx, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("preferences fallback: failed to get device: %w", err)
+	}
+	if dev.Profile.ID == "" {
+		return nil, fmt.Errorf("%w (device %s has no profile)", ErrPreferencesUnsupported, deviceID)
+	}
+	profile, err := c.GetDeviceProfile(ctx, dev.Profile.ID)
+	if err != nil {
+		return nil, fmt.Errorf("preferences fallback: failed to get profile %s: %w", dev.Profile.ID, err)
+	}
+	if len(profile.Preferences) == 0 {
+		return DevicePreferences{
+			"_note": "No preferences defined for this device.",
+		}, nil
+	}
+	result := DevicePreferences{
+		"_note": "Per-device preferences endpoint unavailable (406). " +
+			"These are preference definitions from the device profile, " +
+			"showing available settings and defaults — not current values. " +
+			"The update_device_preferences endpoint is also unavailable for this device.",
+	}
+	for _, p := range profile.Preferences {
+		result[p.PreferenceID] = map[string]any{
+			"title":       p.Title,
+			"description": p.Description,
+			"type":        p.PreferenceType,
+			"required":    p.Required,
+			"definition":  p.Definition,
+		}
+	}
+	return result, nil
+}
+
 // UpdateDevicePreferences writes preferences for a device.
 // The preferences endpoint requires the versioned SmartThings Accept header.
+// Note: this endpoint is undocumented and returns 406 for many device types.
 func (c *Client) UpdateDevicePreferences(ctx context.Context, id string, prefs map[string]any) (DevicePreferences, error) {
 	var out DevicePreferences
 	if err := c.put(ctx, fmt.Sprintf("/v1/devices/%s/preferences", id), prefs, &out, stDeviceHeaders); err != nil {
+		if strings.Contains(err.Error(), "406") {
+			return nil, fmt.Errorf("%w (device %s)", ErrPreferencesUnsupported, id)
+		}
 		return nil, err
 	}
 	return out, nil

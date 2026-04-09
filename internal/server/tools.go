@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -178,6 +179,9 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		}
 		prefs, err := client.GetDevicePreferences(ctx, id)
 		if err != nil {
+			if errors.Is(err, smartthings.ErrPreferencesUnsupported) {
+				return errorResult(fmt.Sprintf("%s. This is a known SmartThings API limitation — the per-device preferences endpoint is undocumented and non-functional for most device types.", err)), nil
+			}
 			return errorResult(err.Error()), nil
 		}
 		return marshalResult(prefs, []mcp.Role{mcp.Role("user"), mcp.Role("assistant")}, 0.8)
@@ -186,7 +190,7 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 	// update_device_preferences
 	s.AddTool(&mcp.Tool{
 		Name:        "update_device_preferences",
-		Description: "Update preferences for a SmartThings device (e.g., motion sensitivity, LED settings)",
+		Description: "Update preferences for a SmartThings device (e.g., motion sensitivity, LED settings). Note: this endpoint is unavailable for many device types — if get_device_preferences returned profile-based definitions with a '_note' field, updates will also fail.",
 		Annotations: idempotentWrite,
 		InputSchema: map[string]any{
 			"type": "object",
@@ -217,6 +221,9 @@ func RegisterTools(s *mcp.Server, client *smartthings.Client) {
 		}
 		result, err := client.UpdateDevicePreferences(ctx, id, prefs)
 		if err != nil {
+			if errors.Is(err, smartthings.ErrPreferencesUnsupported) {
+				return errorResult(fmt.Sprintf("%s. This is a known SmartThings API limitation — the per-device preferences endpoint is undocumented and non-functional for most device types.", err)), nil
+			}
 			return errorResult(err.Error()), nil
 		}
 		return marshalResult(result, []mcp.Role{mcp.Role("user"), mcp.Role("assistant")}, 1.0)
