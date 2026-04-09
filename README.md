@@ -93,7 +93,42 @@ No toolchain required - just Docker.
 }
 ```
 
-### Option 3 - Smithery
+### Option 3 - Remote server with auth
+
+Connect Claude Desktop to a remote SmartThings MCP server protected with JWT auth:
+
+```json
+{
+  "mcpServers": {
+    "smartthings": {
+      "type": "http",
+      "url": "https://your-server.example.com/smartthings-mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_AUTH_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Set the `MCP_AUTH_TOKEN` environment variable to a valid JWT from your OIDC provider, or replace `${MCP_AUTH_TOKEN}` with the token directly.
+
+### Option 4 - Remote server (auto detect if OAuth is enabled)
+
+```json
+{
+  "mcpServers": {
+    "smartthings": {
+      "type": "http",
+      "url": "https://your-server.example.com/smartthings-mcp",
+    }
+  }
+}
+```
+
+
+
+### Option 5 - Smithery
 
 Install automatically via [Smithery](https://smithery.ai/server/@langowarny/smartthings-mcp):
 
