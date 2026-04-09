@@ -1,0 +1,264 @@
+# ---------------------------------------------------------------
+# SmartThings MCP - CI / CD Pipeline
+# ---------------------------------------------------------------
+# Triggers:
+#   push to main   -> build + test, Docker "dev" / "dev-<sha>" tags (push)
+#   tags v*        -> build + test, Docker semver + "latest" tags, GitHub release
+#   workflow_dispatch -> manual run with configurable options
+#
+# Compatible with nektos/act for local runs.
+# ---------------------------------------------------------------
+name: CI / CD
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      docker_push:
+        description: "Push Docker image (false = load only)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+# ---------------------------------------------------------------
+# Global settings — overridable via repository variables / act vars
+# ---------------------------------------------------------------
+env:
+  GO_VERSION: "1.23"
+  REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
+  REGISTRY_ORG: ${{ vars.REGISTRY_ORG || github.repository_owner }}
+  IMAGE_NAME: smartthings-mcp
+  LDFLAGS_PKG: github.com/langowarny/smartthings-mcp/internal/version
+
+permissions:
+  contents: write
+  packages: write
+
+# ---------------------------------------------------------------
+# Jobs
+# ---------------------------------------------------------------
+jobs:
+  # =============================================================
+  # 1. Metadata — resolve version, commit, tags
+  # =============================================================
+  metadata:
+    name: Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit_sha: ${{ steps.commit.outputs.short-sha }}
+      commit_sha_long: ${{ steps.commit.outputs.sha }}
+      build_date: ${{ steps.date.outputs.date }}
+      is_release: ${{ steps.flags.outputs.is_release }}
+      docker_push: ${{ steps.flags.outputs.docker_push }}
+      docker_tags: ${{ steps.docker-meta.outputs.tags }}
+      docker_labels: ${{ steps.docker-meta.outputs.labels }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get commit info
+        id: commit
+        uses: LiquidLogicLabs/git-action-commit-info@v2
+
+      - name: Build date
+        id: date
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set flags
+        id: flags
+        run: |
+          IS_RELEASE="false"
+          DOCKER_PUSH="false"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            IS_RELEASE="true"
+            DOCKER_PUSH="true"
+          fi
+
+          # workflow_dispatch override
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            DOCKER_PUSH="${{ inputs.docker_push }}"
+          fi
+
+          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "docker_push=${DOCKER_PUSH}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata
+        id: docker-meta
+        uses: LiquidLogicLabs/git-action-docker-metadata@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ steps.flags.outputs.is_release }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.flags.outputs.is_release }}
+            type=raw,value=latest,enable=${{ steps.flags.outputs.is_release }}
+            type=raw,value=dev,enable=${{ steps.flags.outputs.is_release == 'false' }}
+            type=raw,value=dev-${{ steps.commit.outputs.short-sha }},enable=${{ steps.flags.outputs.is_release == 'false' }}
+
+  # =============================================================
+  # 2. Build & Test Go binaries
+  # =============================================================
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: [metadata]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build \
+            -ldflags="-s -w \
+              -X ${{ env.LDFLAGS_PKG }}.Version=${{ needs.metadata.outputs.version }} \
+              -X ${{ env.LDFLAGS_PKG }}.Commit=${{ needs.metadata.outputs.commit_sha }} \
+              -X ${{ env.LDFLAGS_PKG }}.Date=${{ needs.metadata.outputs.build_date }}" \
+            -o dist/smartthings-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} \
+            ./cmd/server
+
+      - name: Test (native only)
+        if: matrix.goos == 'linux'
+        run: go test -v -race ./...
+
+      - name: Smoke test binary
+        if: matrix.goos == 'linux'
+        run: |
+          chmod +x dist/smartthings-mcp-linux-amd64
+          OUTPUT=$(./dist/smartthings-mcp-linux-amd64 -version)
+          echo "Binary output: ${OUTPUT}"
+          echo "${OUTPUT}" | grep -q "${{ needs.metadata.outputs.version }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartthings-mcp-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/smartthings-mcp-*
+
+  # =============================================================
+  # 3. Docker — build, test, push
+  # =============================================================
+  docker:
+    name: Docker
+    needs: [metadata]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Act compatibility
+        id: act-compat
+        uses: LiquidLogicLabs/git-action-docker-act-compatibility@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to registry
+        if: needs.metadata.outputs.docker_push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.act-compat.outputs.docker-build-context }}
+          file: ${{ steps.act-compat.outputs.docker-file }}
+          push: ${{ needs.metadata.outputs.docker_push == 'true' }}
+          load: ${{ needs.metadata.outputs.docker_push != 'true' }}
+          tags: ${{ needs.metadata.outputs.docker_tags }}
+          labels: ${{ needs.metadata.outputs.docker_labels }}
+          build-args: |
+            VERSION=${{ needs.metadata.outputs.version }}
+            COMMIT=${{ needs.metadata.outputs.commit_sha }}
+            BUILD_DATE=${{ needs.metadata.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        uses: LiquidLogicLabs/git-action-docker-test@v2
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ env.IMAGE_NAME }}:${{ needs.metadata.outputs.is_release == 'true' && needs.metadata.outputs.version || format('dev-{0}', needs.metadata.outputs.commit_sha) }}
+          startup-timeout: "30"
+          skip-healthcheck: "true"
+          skip-s6-check: "true"
+
+  # =============================================================
+  # 4. Release — create GitHub release with binaries + changelog
+  # =============================================================
+  release:
+    name: Release
+    needs: [metadata, build, docker]
+    if: needs.metadata.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: smartthings-mcp-*
+          merge-multiple: true
+
+      - name: Validate version tag
+        uses: LiquidLogicLabs/git-action-tag-validate-version@v2
+        id: validate
+        with:
+          tag: v${{ needs.metadata.outputs.version }}
+          version-type: semver
+
+      - name: Build changelog
+        id: changelog
+        uses: LiquidLogicLabs/git-action-release-changelog-builder@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          mode: COMMIT
+          from-tag: "-1"
+
+      - name: Create release
+        uses: LiquidLogicLabs/git-action-release@v2
+        with:
+          tag: v${{ needs.metadata.outputs.version }}
+          name: v${{ needs.metadata.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          artifacts: "dist/*"
+          allow-updates: "true"
+
+      - name: Update floating version tags
+        uses: LiquidLogicLabs/git-action-tag-floating-version@v2
+        with:
+          tag: v${{ needs.metadata.outputs.version }}
+          update-minor: "true"

@@ -1,0 +1,10 @@
+# .act.vars — Repository variables for nektos/act local runs
+# Copy to .act.vars and fill in values
+#
+# These map to vars.* in the workflow
+
+# Container registry (default: ghcr.io)
+REGISTRY=ghcr.io
+
+# Registry org/owner (default: your GitHub username)
+REGISTRY_ORG=ravensorb

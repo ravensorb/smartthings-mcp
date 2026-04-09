@@ -1,0 +1,44 @@
+{
+  "name": "SmartThings MCP",
+  "image": "mcr.microsoft.com/devcontainers/go:1.26-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "go.toolsManagement.autoUpdate": true,
+        "go.lintTool": "golangci-lint",
+        "go.lintFlags": ["--fast"],
+        "go.testFlags": ["-v", "-race"],
+        "editor.formatOnSave": true,
+        "[go]": {
+          "editor.defaultFormatter": "golang.go"
+        }
+      },
+      "extensions": [
+        "golang.go",
+        "ms-azuretools.vscode-docker",
+        "eamodio.gitlens",
+        "EditorConfig.EditorConfig",
+        "anthropic.claude-code",
+        "github.vscode-github-actions"
+      ]
+    }
+  },
+  "postCreateCommand": "go mod download && go install golang.org/x/tools/gopls@latest && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
+  "remoteUser": "vscode",
+  "forwardPorts": [8081],
+  "portsAttributes": {
+    "8081": {
+      "label": "SmartThings MCP (HTTP)",
+      "onAutoForward": "notify"
+    }
+  },
+  "remoteEnv": {
+    "SMARTTHINGS_TOKEN": "${localEnv:SMARTTHINGS_TOKEN}",
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}"
+  }
+}

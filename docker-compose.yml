@@ -1,0 +1,23 @@
+services:
+  mcp-server:
+    image: ${REGISTRY:-ghcr.io}/${REGISTRY_ORG:-ravensorb}/smartthings-mcp:${IMAGE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    command: ["-transport", "stream", "-host", "0.0.0.0", "-port", "8081"]
+    restart: unless-stopped
+
+  inspector:
+    image: ghcr.io/modelcontextprotocol/inspector:latest
+    ports:
+      - "6274:6274"
+      - "6277:6277"
+    environment:
+      - HOST=0.0.0.0
+      - MCP_AUTO_OPEN_ENABLED=false
+      - DANGEROUSLY_OMIT_AUTH=true
+    restart: unless-stopped
