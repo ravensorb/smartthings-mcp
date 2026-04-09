@@ -8,15 +8,23 @@ LLM-friendly tools, resources and real-time events.
 ## Features
 
 * **Lazy Loading**: Tools are discoverable without authentication - only validates API keys when tools are invoked
-* Wraps common SmartThings operations as **MCP Tools**
-  * **Devices**: `list_devices`, `get_device`, `get_device_status`, `get_device_preferences`, `update_device_preferences`, `get_device_health`, `delete_device`, `list_device_capabilities`, `send_device_command`
-  * **Locations & Rooms**: `list_locations`, `get_location`, `list_rooms`, `get_room`, `update_room`, `create_room`, `delete_room`
-  * **Scenes**: `list_scenes`, `execute_scene`
-  * **Rules & Automations**: `list_rules`, `get_rule`, `create_rule`, `delete_rule`
-  * **Hubs**: `list_hubs`, `get_hub_health`
-  * **Subscriptions**: `list_subscriptions`, `create_subscription`, `delete_subscription`
-  * **Schedules**: `list_schedules`, `create_schedule`, `delete_schedule`
-  * **History & Capabilities**: `get_device_history`, `get_capability`
+* **51 MCP Tools** covering the full SmartThings API surface
+  * **Devices** (14): list, get, status, preferences, health, history, capabilities, commands, create, update, delete, component/capability status
+  * **Locations** (5): list, get, create, update, delete
+  * **Rooms** (6): list, get, create, update, delete, list devices in room
+  * **Modes** (3): list, get current, set current (Home/Away/Night)
+  * **Scenes** (2): list, execute
+  * **Rules** (5): list, get, create, update, delete, execute
+  * **Hubs** (2): list, health
+  * **Capabilities** (3): get definition, list standard, list namespaces
+  * **Installed Apps** (2): list, get
+  * **Subscriptions** (3): list, create, delete
+  * **Schedules** (4): list, get, create, delete
+  * **Notifications** (1): send push notification
+* **MCP Tool Annotations** for safety — all 51 tools annotated with `readOnlyHint`, `destructiveHint`, and `idempotentHint` per the MCP spec
+  * Destructive operations (delete device/location/rule) clearly marked
+  * Physical side-effect operations (send command, execute scene, change mode) marked
+  * `delete_location` gated behind `smartthings:location:delete` scope when auth is enabled
 * Exposes device / status / location data as **MCP Resources** with read-through cache
 * Supports all official **MCP-Go transports**
   * **Stdio** (CLI / local), **StreamableHTTP**, **Server-Sent Events (SSE)**
@@ -218,80 +226,127 @@ docker run --rm -p 8081:8081 \
 
 ## Tool Catalogue
 
+All tools include MCP [tool annotations](https://modelcontextprotocol.io/specification/2025-06-18/basic/utilities/annotations) indicating whether they are read-only, destructive, or trigger physical side effects.
+
 ### Devices
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_devices` | `location_id?` | List devices (optionally filtered by location) |
-| `get_device` | `device_id` | Device metadata |
-| `get_device_status` | `device_id` | Live device status |
-| `get_device_preferences` | `device_id` | Read device preferences (parameter101, etc.) |
-| `update_device_preferences` | `device_id`, `preferences` | Write device preferences (e.g., motion sensitivity) |
-| `get_device_health` | `device_id` | Check if device is online/offline |
-| `delete_device` | `device_id` | Remove a device |
-| `list_device_capabilities` | `device_id` | Supported capabilities |
-| `send_device_command` | `device_id`, `capability`, `command`, `component?`, `arguments?` | Send a command to a device |
-| `get_device_history` | `device_id` | Recent event history |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_devices` | `location_id?` | read-only | List devices (optionally filtered by location) |
+| `get_device` | `device_id` | read-only | Device metadata |
+| `get_device_status` | `device_id` | read-only | Live device status |
+| `get_device_preferences` | `device_id` | read-only | Read device preferences |
+| `update_device_preferences` | `device_id`, `preferences` | idempotent | Write device preferences (e.g., motion sensitivity) |
+| `get_device_health` | `device_id` | read-only | Check if device is online/offline |
+| `delete_device` | `device_id` | **destructive** | Remove a device (irreversible) |
+| `list_device_capabilities` | `device_id` | read-only | Supported capabilities |
+| `send_device_command` | `device_id`, `capability`, `command`, `component?`, `arguments?` | **side-effect** | Send a command (physically actuates device) |
+| `get_device_history` | `device_id` | read-only | Recent event history |
+| `update_device` | `device_id`, `label?`, `room_id?` | idempotent | Rename or move a device to a different room |
+| `get_component_status` | `device_id`, `component_id` | read-only | Status for a specific component |
+| `get_capability_status` | `device_id`, `component_id`, `capability_id` | read-only | Status for a specific capability on a component |
+| `create_device` | `label`, `location_id`, `profile_id`, `room_id?` | safe-write | Create a virtual/cloud device |
 
-### Locations & Rooms
+### Locations
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_locations` | - | List all locations |
-| `get_location` | `location_id` | Location details |
-| `list_rooms` | `location_id` | List rooms in a location |
-| `get_room` | `location_id`, `room_id` | Room details |
-| `update_room` | `location_id`, `room_id`, `name` | Rename/update a room |
-| `create_room` | `location_id`, `name` | Create a room |
-| `delete_room` | `location_id`, `room_id` | Delete a room |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_locations` | - | read-only | List all locations |
+| `get_location` | `location_id` | read-only | Location details |
+| `create_location` | `name`, `country_code`, `latitude?`, `longitude?` | safe-write | Create a new location |
+| `update_location` | `location_id`, `name` | idempotent | Rename a location |
+| `delete_location` | `location_id` | **destructive** | Delete a location (cascading delete of all devices, rooms, scenes, rules). Requires `smartthings:location:delete` scope when auth is enabled. |
+
+### Rooms
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_rooms` | `location_id` | read-only | List rooms in a location |
+| `get_room` | `location_id`, `room_id` | read-only | Room details |
+| `create_room` | `location_id`, `name` | safe-write | Create a room |
+| `update_room` | `location_id`, `room_id`, `name` | idempotent | Rename a room |
+| `delete_room` | `location_id`, `room_id` | **destructive** | Delete a room |
+| `list_room_devices` | `location_id`, `room_id` | read-only | List devices in a room |
+
+### Modes
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_modes` | `location_id` | read-only | List modes (Home, Away, Night, etc.) |
+| `get_current_mode` | `location_id` | read-only | Get the active mode |
+| `set_current_mode` | `location_id`, `mode_id` | **side-effect** | Change mode (may trigger cascading automations) |
 
 ### Scenes
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_scenes` | - | List all scenes |
-| `execute_scene` | `scene_id` | Run a scene |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_scenes` | - | read-only | List all scenes |
+| `execute_scene` | `scene_id` | **side-effect** | Run a scene (triggers physical device actions) |
 
 ### Rules & Automations
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_rules` | - | List automation rules |
-| `get_rule` | `rule_id` | Rule details |
-| `create_rule` | `name`, `actions` | Create an automation rule |
-| `delete_rule` | `rule_id` | Delete a rule |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_rules` | - | read-only | List automation rules |
+| `get_rule` | `rule_id` | read-only | Rule details |
+| `create_rule` | `name`, `actions` | safe-write | Create an automation rule |
+| `update_rule` | `rule_id`, `name`, `actions` | idempotent | Update an existing rule |
+| `delete_rule` | `rule_id` | **destructive** | Delete a rule |
+| `execute_rule` | `rule_id` | **side-effect** | Manually trigger a rule |
 
 ### Hubs
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_hubs` | - | List hubs |
-| `get_hub_health` | `hub_id` | Hub health status |
-
-### Subscriptions & Schedules
-
-| Tool | Params | Description |
-|------|--------|-------------|
-| `list_subscriptions` | `installed_app_id` | List event subscriptions |
-| `create_subscription` | `installed_app_id`, `device_id`, `capability`, `attribute` | Subscribe to device events |
-| `delete_subscription` | `installed_app_id`, `subscription_id` | Remove a subscription |
-| `list_schedules` | `installed_app_id` | List schedules |
-| `create_schedule` | `installed_app_id`, `name`, `cron_expression`, `timezone?` | Create a cron schedule |
-| `delete_schedule` | `installed_app_id`, `schedule_id` | Delete a schedule |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_hubs` | - | read-only | List hubs |
+| `get_hub_health` | `hub_id` | read-only | Hub health status |
 
 ### Capabilities
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `get_capability` | `capability_id`, `version?` | Capability definition (attributes, commands) |
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `get_capability` | `capability_id`, `version?` | read-only | Capability definition (attributes, commands) |
+| `list_capabilities` | - | read-only | List all standard capabilities |
+| `list_capability_namespaces` | - | read-only | List capability namespaces |
+
+### Installed Apps
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_installed_apps` | - | read-only | List installed apps |
+| `get_installed_app` | `installed_app_id` | read-only | Installed app details |
+
+### Subscriptions
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_subscriptions` | `installed_app_id` | read-only | List event subscriptions |
+| `create_subscription` | `installed_app_id`, `device_id`, `capability`, `attribute` | safe-write | Subscribe to device events |
+| `delete_subscription` | `installed_app_id`, `subscription_id` | **destructive** | Remove a subscription |
+
+### Schedules
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `list_schedules` | `installed_app_id` | read-only | List schedules |
+| `get_schedule` | `installed_app_id`, `schedule_name` | read-only | Get schedule details |
+| `create_schedule` | `installed_app_id`, `name`, `cron_expression`, `timezone?` | safe-write | Create a cron schedule |
+| `delete_schedule` | `installed_app_id`, `schedule_id` | **destructive** | Delete a schedule |
+
+### Notifications
+
+| Tool | Params | Hint | Description |
+|------|--------|------|-------------|
+| `send_notification` | `location_id`, `message` | safe-write | Send push notification to SmartThings mobile app |
 
 ## Resource Patterns
 
-| URI Template | Description | MIME |
-|--------------|-------------|------|
+| URI | Description | MIME |
+|-----|-------------|------|
 | `st://devices/{device_id}` | Device metadata | `application/json` |
 | `st://devices/{device_id}/status` | Live status | `application/json` |
 | `st://locations/{location_id}` | Location metadata | `application/json` |
+| `st://locations` | All locations | `application/json` |
 
 ## Development
 

@@ -29,7 +29,8 @@ func discoverOIDC(ctx context.Context, issuerURL string) (*oidcDiscovery, error)
 		return nil, fmt.Errorf("creating discovery request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document from %s: %w", discoveryURL, err)
 	}
@@ -89,7 +90,6 @@ func NewJWTVerifier(ctx context.Context, cfg AuthConfig, logger *zap.SugaredLogg
 
 	cleanup := func() {
 		jwksCancel()
-		_ = jwks // prevent lint warning
 	}
 
 	audience := cfg.Audience

@@ -70,12 +70,15 @@ func RegisterResources(s *mcp.Server, client *smartthings.Client) {
 		if err != nil {
 			return nil, err
 		}
-		d, err := client.GetDevice(deviceID)
+		d, err := client.GetDevice(ctx, deviceID)
 		if err != nil {
 			return nil, err
 		}
-		bytes, _ := json.Marshal(d)
-		jsonText := string(bytes)
+		data, err := json.Marshal(d)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling device: %w", err)
+		}
+		jsonText := string(data)
 		putCache(uri, jsonText)
 		return &mcp.ReadResourceResult{Contents: wrap(uri, jsonText)}, nil
 	})
@@ -96,12 +99,15 @@ func RegisterResources(s *mcp.Server, client *smartthings.Client) {
 		if err != nil {
 			return nil, err
 		}
-		status, err := client.GetDeviceStatus(deviceID)
+		status, err := client.GetDeviceStatus(ctx, deviceID)
 		if err != nil {
 			return nil, err
 		}
-		bytes, _ := json.Marshal(status)
-		jsonText := string(bytes)
+		data, err := json.Marshal(status)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling device status: %w", err)
+		}
+		jsonText := string(data)
 		putCache(uri, jsonText)
 		return &mcp.ReadResourceResult{Contents: wrap(uri, jsonText)}, nil
 	})
@@ -122,19 +128,22 @@ func RegisterResources(s *mcp.Server, client *smartthings.Client) {
 		if err != nil {
 			return nil, err
 		}
-		loc, err := client.GetLocation(locID)
+		loc, err := client.GetLocation(ctx, locID)
 		if err != nil {
 			return nil, err
 		}
-		bytes, _ := json.Marshal(loc)
-		jsonText := string(bytes)
+		data, err := json.Marshal(loc)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling location: %w", err)
+		}
+		jsonText := string(data)
 		putCache(uri, jsonText)
 		return &mcp.ReadResourceResult{Contents: wrap(uri, jsonText)}, nil
 	})
 
-	// Template: st://locations
-	s.AddResourceTemplate(&mcp.ResourceTemplate{
-		URITemplate: "st://locations",
+	// Static resource: st://locations
+	s.AddResource(&mcp.Resource{
+		URI:         "st://locations",
 		Name:        "SmartThings Locations",
 		Description: "List of all SmartThings locations.",
 		MIMEType:    mimeJSON,
@@ -144,12 +153,15 @@ func RegisterResources(s *mcp.Server, client *smartthings.Client) {
 			return &mcp.ReadResourceResult{Contents: wrap(uri, cached)}, nil
 		}
 
-		locs, err := client.ListLocations()
+		locs, err := client.ListLocations(ctx)
 		if err != nil {
 			return nil, err
 		}
-		bytes, _ := json.Marshal(locs)
-		jsonText := string(bytes)
+		data, err := json.Marshal(locs)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling locations: %w", err)
+		}
+		jsonText := string(data)
 		putCache(uri, jsonText)
 		return &mcp.ReadResourceResult{Contents: wrap(uri, jsonText)}, nil
 	})

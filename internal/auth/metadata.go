@@ -46,6 +46,6 @@ func NewProtectedResourceHandler(cfg AuthConfig) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(meta)
+		_ = json.NewEncoder(w).Encode(meta)
 	}
 }

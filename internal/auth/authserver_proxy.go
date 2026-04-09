@@ -58,7 +58,9 @@ func (p *AuthServerMetadataProxy) ServeHTTP(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", cacheControlValue)
-	w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		p.logger.Debugf("authserver metadata proxy: write response: %v", err)
+	}
 }
 
 // get returns cached metadata if fresh, otherwise fetches from upstream.
@@ -111,7 +113,7 @@ func (p *AuthServerMetadataProxy) fetchAndRewrite() ([]byte, error) {
 		return nil, fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("reading response from %s: %w", url, err)
 	}

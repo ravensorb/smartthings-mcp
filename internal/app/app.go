@@ -266,8 +266,9 @@ func (a *Application) Start() error {
 		streamHandler := mcp.NewStreamableHTTPHandler(factory, nil)
 
 		a.httpServer = &http.Server{
-			Addr:    addr,
-			Handler: a.setupMux(sseHandler, streamHandler, a.cfg.Transport, authMiddleware),
+			Addr:              addr,
+			ReadHeaderTimeout: 10 * time.Second,
+			Handler:           a.setupMux(sseHandler, streamHandler, a.cfg.Transport, authMiddleware),
 		}
 
 		go func() {
