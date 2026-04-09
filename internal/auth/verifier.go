@@ -109,6 +109,7 @@ func NewJWTVerifier(ctx context.Context, cfg AuthConfig, logger *zap.SugaredLogg
 
 		token, err := jwt.Parse(tokenString, jwks.KeyfuncCtx(ctx), parserOpts...)
 		if err != nil {
+			logger.Debugf("Auth failed: %v", err)
 			return nil, fmt.Errorf("%w: %v", sdkauth.ErrInvalidToken, err)
 		}
 
@@ -132,6 +133,19 @@ func NewJWTVerifier(ctx context.Context, cfg AuthConfig, logger *zap.SugaredLogg
 			if v, ok := claims[key]; ok {
 				extra[key] = v
 			}
+		}
+
+		// Log authenticated identity.
+		sub, _ := extra["sub"].(string)
+		email, _ := extra["email"].(string)
+		identity := sub
+		if email != "" {
+			identity = email
+		}
+		if identity != "" {
+			logger.Infof("Authenticated: %s (scopes: %v)", identity, scopes)
+		} else {
+			logger.Info("Authenticated: unknown identity (no sub/email claim)")
 		}
 
 		return &sdkauth.TokenInfo{

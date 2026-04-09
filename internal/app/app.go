@@ -60,6 +60,17 @@ func NewApplication(cfg Config) (*Application, error) {
 	}, nil
 }
 
+// statusWriter wraps http.ResponseWriter to capture the status code.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // initAuth initializes JWT auth middleware if enabled. Returns the middleware
 // wrapper (identity function if auth disabled) and any error.
 func (a *Application) initAuth() (func(http.Handler) http.Handler, error) {
@@ -100,6 +111,9 @@ func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http
 
 	// CORS wraps everything (outermost).
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		a.logger.Debugf("Request: %s %s from %s (session: %s)", r.Method, r.URL.Path, r.RemoteAddr, r.Header.Get("mcp-session-id"))
+
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, mcp-session-id, mcp-protocol-version")
@@ -110,7 +124,10 @@ func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http
 			return
 		}
 
-		mux.ServeHTTP(w, r)
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		mux.ServeHTTP(sw, r)
+
+		a.logger.Debugf("Response: %s %s %d (%s)", r.Method, r.URL.Path, sw.status, time.Since(start).Round(time.Millisecond))
 	})
 }
 
