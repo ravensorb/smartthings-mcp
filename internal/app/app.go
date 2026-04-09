@@ -95,8 +95,39 @@ func (a *Application) initAuth() (func(http.Handler) http.Handler, error) {
 	return sdkauth.RequireBearerToken(verifier, opts), nil
 }
 
-// setupMux creates an HTTP mux with auth middleware and optional metadata endpoint.
-func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http.Handler) http.Handler) http.Handler {
+// newServerFactory returns an HTTP handler factory that creates a per-request
+// MCP server with SmartThings credentials from query parameters or config.
+func (a *Application) newServerFactory() func(r *http.Request) *mcp.Server {
+	return func(r *http.Request) *mcp.Server {
+		// Accept both camelCase (Smithery) and uppercase (legacy) param names.
+		token := r.URL.Query().Get("smartThingsToken")
+		if token == "" {
+			token = r.URL.Query().Get("SMARTTHINGS_TOKEN")
+		}
+		if token == "" {
+			token = a.cfg.Token
+		}
+
+		baseURL := r.URL.Query().Get("stBaseUrl")
+		if baseURL == "" {
+			baseURL = r.URL.Query().Get("ST_BASE_URL")
+		}
+		if baseURL == "" {
+			baseURL = a.cfg.BaseURL
+		}
+
+		if token == "" {
+			a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
+		}
+
+		stClient := smartthings.NewClient(token, baseURL)
+		return srv.NewMCPServer(a.logger, stClient)
+	}
+}
+
+// setupMux creates an HTTP mux with auth middleware, routing /sse to the SSE
+// handler, /mcp to the stream handler, and / to the primary transport.
+func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTransport string, authMiddleware func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
 
 	// RFC 9728 metadata endpoint (unauthenticated).
@@ -104,10 +135,16 @@ func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http
 		mux.Handle("/.well-known/oauth-protected-resource", auth.NewProtectedResourceHandler(a.cfg.AuthConfig))
 	}
 
-	// MCP handler wrapped with auth middleware.
-	protected := authMiddleware(mcpHandler)
-	mux.Handle("/mcp", protected)
-	mux.Handle("/", protected)
+	// Route /sse → SSE handler, /mcp → stream handler.
+	mux.Handle("/sse", authMiddleware(sseHandler))
+	mux.Handle("/mcp", authMiddleware(streamHandler))
+
+	// Default route uses whichever transport was selected.
+	if primaryTransport == "sse" {
+		mux.Handle("/", authMiddleware(sseHandler))
+	} else {
+		mux.Handle("/", authMiddleware(streamHandler))
+	}
 
 	// CORS wraps everything (outermost).
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +171,32 @@ func (a *Application) setupMux(mcpHandler http.Handler, authMiddleware func(http
 func (a *Application) Start() error {
 	a.logger.Info("Starting SmartThings MCP Server...")
 
+	// Log loaded configuration.
+	a.logger.Infof("Config: transport=%s, host=%s, port=%d", a.cfg.Transport, a.cfg.Host, a.cfg.Port)
+	if a.cfg.BaseURL != "" {
+		a.logger.Infof("Config: SmartThings base URL=%s", a.cfg.BaseURL)
+	}
+	if a.cfg.Token != "" {
+		a.logger.Info("Config: SmartThings token=***configured***")
+	} else {
+		a.logger.Warn("Config: SmartThings token not set; tools will fail without it")
+	}
+	if a.cfg.AuthConfig.Enabled {
+		if a.cfg.AuthConfig.OIDCIssuerURL != "" {
+			a.logger.Infof("Config: auth enabled, OIDC issuer=%s, audience=%s", a.cfg.AuthConfig.OIDCIssuerURL, a.cfg.AuthConfig.Audience)
+		} else {
+			a.logger.Infof("Config: auth enabled, JWKS=%s, issuer=%s, audience=%s", a.cfg.AuthConfig.JWKSURL, a.cfg.AuthConfig.Issuer, a.cfg.AuthConfig.Audience)
+		}
+		if len(a.cfg.AuthConfig.RequiredScopes) > 0 {
+			a.logger.Infof("Config: required scopes=%v", a.cfg.AuthConfig.RequiredScopes)
+		}
+		if a.cfg.AuthConfig.ResourceID != "" {
+			a.logger.Infof("Config: RFC 9728 metadata enabled, resource=%s", a.cfg.AuthConfig.ResourceID)
+		}
+	} else {
+		a.logger.Info("Config: auth disabled")
+	}
+
 	// Initialize SmartThings Client
 	stClient := smartthings.NewClient(a.cfg.Token, a.cfg.BaseURL)
 
@@ -158,7 +221,7 @@ func (a *Application) Start() error {
 				a.logger.Errorf("Stdio server error: %v", err)
 			}
 		}()
-	case "sse":
+	case "sse", "stream":
 		port := a.cfg.Port
 		if envPort := os.Getenv("PORT"); envPort != "" {
 			if p, err := strconv.Atoi(envPort); err == nil {
@@ -166,76 +229,25 @@ func (a *Application) Start() error {
 			}
 		}
 		addr := fmt.Sprintf("%s:%d", a.cfg.Host, port)
-		a.logger.Infof("Starting SSE server on %s", addr)
+		a.logger.Infof("Starting %s server on %s (all transports available: /sse, /mcp, /)", a.cfg.Transport, addr)
 
-		if a.cfg.AuthConfig.Enabled {
+		if a.cfg.AuthConfig.Enabled && a.cfg.Transport == "sse" {
 			a.logger.Warn("SSE transport with auth: TokenInfo will not propagate to tool handlers (SDK v1.1.0 limitation). Consider using 'stream' transport instead.")
 		}
 
-		sseHandler := mcp.NewSSEHandler(func(r *http.Request) *mcp.Server {
-			// Parse configuration from query parameters
-			token := r.URL.Query().Get("SMARTTHINGS_TOKEN")
-			if token == "" {
-				token = a.cfg.Token
-			}
-
-			baseURL := r.URL.Query().Get("ST_BASE_URL")
-			if baseURL == "" {
-				baseURL = a.cfg.BaseURL
-			}
-
-			if token == "" {
-				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
-			}
-
-			stClient := smartthings.NewClient(token, baseURL)
-			return srv.NewMCPServer(a.logger, stClient)
-		}, nil)
+		factory := a.newServerFactory()
+		sseHandler := mcp.NewSSEHandler(factory, nil)
+		streamHandler := mcp.NewStreamableHTTPHandler(factory, nil)
 
 		a.httpServer = &http.Server{
 			Addr:    addr,
-			Handler: a.setupMux(sseHandler, authMiddleware),
+			Handler: a.setupMux(sseHandler, streamHandler, a.cfg.Transport, authMiddleware),
 		}
 
 		go func() {
 			defer close(a.done)
 			if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				a.logger.Errorf("SSE server error: %v", err)
-			}
-		}()
-	case "stream":
-		addr := fmt.Sprintf("%s:%d", a.cfg.Host, a.cfg.Port)
-		a.logger.Infof("Starting Stream server on %s", addr)
-
-		streamHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-			// Parse configuration from query parameters
-			token := r.URL.Query().Get("smartThingsToken")
-			if token == "" {
-				token = a.cfg.Token
-			}
-
-			baseURL := r.URL.Query().Get("stBaseUrl")
-			if baseURL == "" {
-				baseURL = a.cfg.BaseURL
-			}
-
-			if token == "" {
-				a.logger.Warn("No SmartThings token provided in request or config; tools will be discoverable but execution will fail.")
-			}
-
-			stClient := smartthings.NewClient(token, baseURL)
-			return srv.NewMCPServer(a.logger, stClient)
-		}, nil)
-
-		a.httpServer = &http.Server{
-			Addr:    addr,
-			Handler: a.setupMux(streamHandler, authMiddleware),
-		}
-
-		go func() {
-			defer close(a.done)
-			if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				a.logger.Errorf("Stream server error: %v", err)
+				a.logger.Errorf("HTTP server error: %v", err)
 			}
 		}()
 	default:
