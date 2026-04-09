@@ -172,8 +172,16 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 	// Proxy upstream IdP discovery with rewritten issuer so RFC 8414
 	// clients that prepend /.well-known/oauth-authorization-server can
 	// validate the issuer against the MCP server's ResourceID.
+	if a.cfg.AuthConfig.ClientID != "" {
+		dcr := auth.NewDCRProxyHandler(a.cfg.AuthConfig.ClientID, a.cfg.AuthConfig.ClientSecret, a.logger)
+		topMux.Handle("POST /oauth/register", dcr)
+		a.logger.Infof("DCR proxy enabled: client_id=%s", a.cfg.AuthConfig.ClientID)
+	}
 	if a.cfg.AuthConfig.OIDCIssuerURL != "" && a.cfg.AuthConfig.ResourceID != "" {
 		proxy := auth.NewAuthServerMetadataProxy(a.cfg.AuthConfig.OIDCIssuerURL, a.cfg.AuthConfig.ResourceID, a.logger)
+		if a.cfg.AuthConfig.ClientID != "" {
+			proxy.RegistrationEndpoint = a.cfg.AuthConfig.ResourceID + "/oauth/register"
+		}
 		topMux.Handle("GET /.well-known/oauth-authorization-server", proxy)
 		topMux.Handle("GET /.well-known/openid-configuration", proxy)
 		a.logger.Infof("Auth-server metadata proxy enabled: upstream=%s, issuer-override=%s", a.cfg.AuthConfig.OIDCIssuerURL, a.cfg.AuthConfig.ResourceID)

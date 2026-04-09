@@ -40,6 +40,14 @@ type AuthConfig struct {
 	// AuthorizationServers is a list of authorization server issuer
 	// identifiers for RFC 9728 metadata.
 	AuthorizationServers []string
+
+	// ClientID is a pre-registered OAuth client ID to hand out via the
+	// DCR proxy endpoint (RFC 7591). Optional.
+	ClientID string
+
+	// ClientSecret is the corresponding client secret. Optional (empty
+	// for public clients).
+	ClientSecret string
 }
 
 // LoadAuthConfig reads auth configuration from environment variables.
@@ -52,6 +60,8 @@ func LoadAuthConfig() (AuthConfig, error) {
 		Issuer:        os.Getenv("MCP_AUTH_ISSUER"),
 		Audience:      os.Getenv("MCP_AUTH_AUDIENCE"),
 		ResourceID:    os.Getenv("MCP_AUTH_RESOURCE_ID"),
+		ClientID:      os.Getenv("MCP_AUTH_CLIENT_ID"),
+		ClientSecret:  os.Getenv("MCP_AUTH_CLIENT_SECRET"),
 	}
 
 	if scopes := os.Getenv("MCP_AUTH_SCOPES"); scopes != "" {

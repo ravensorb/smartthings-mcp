@@ -21,10 +21,11 @@ const (
 // document, rewrites the issuer field to match the MCP server's ResourceID,
 // and serves the result so that RFC 8414 issuer validation passes.
 type AuthServerMetadataProxy struct {
-	oidcIssuerURL  string
-	issuerOverride string
-	logger         *zap.SugaredLogger
-	client         *http.Client
+	oidcIssuerURL        string
+	issuerOverride       string
+	RegistrationEndpoint string
+	logger               *zap.SugaredLogger
+	client               *http.Client
 
 	mu        sync.RWMutex
 	cached    []byte
@@ -121,6 +122,9 @@ func (p *AuthServerMetadataProxy) fetchAndRewrite() ([]byte, error) {
 	}
 
 	doc["issuer"] = p.issuerOverride
+	if p.RegistrationEndpoint != "" {
+		doc["registration_endpoint"] = p.RegistrationEndpoint
+	}
 
 	rewritten, err := json.Marshal(doc)
 	if err != nil {
