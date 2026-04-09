@@ -1,30 +1,40 @@
 # Lango SmartThings MCP Server
 
+[![CI/CD](https://github.com/ravensorb/smartthings-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ravensorb/smartthings-mcp/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/ravensorb/smartthings-mcp)](https://github.com/ravensorb/smartthings-mcp/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/langowarny/smartthings-mcp)](https://goreportcard.com/report/github.com/langowarny/smartthings-mcp)
+[![Docker Image](https://img.shields.io/badge/ghcr.io-smartthings--mcp-blue?logo=docker)](https://ghcr.io/ravensorb/smartthings-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![smithery badge](https://smithery.ai/badge/@langowarny/smartthings-mcp)](https://smithery.ai/server/@langowarny/smartthings-mcp)
 
 A **Model Context Protocol (MCP)** server that exposes Samsung **SmartThings Public API** as
 LLM-friendly tools, resources and real-time events.
 
+---
+
 ## Features
 
 * **Lazy Loading**: Tools are discoverable without authentication - only validates API keys when tools are invoked
-* **51 MCP Tools** covering the full SmartThings API surface
-  * **Devices** (14): list, get, status, preferences, health, history, capabilities, commands, create, update, delete, component/capability status
+* **53 MCP Tools** covering the full SmartThings API surface
+  * **Devices** (16): list, get, status, preferences, health, history, capabilities (IDs and full schemas), commands, create, update, delete, component/capability status
   * **Locations** (5): list, get, create, update, delete
   * **Rooms** (6): list, get, create, update, delete, list devices in room
   * **Modes** (3): list, get current, set current (Home/Away/Night)
   * **Scenes** (2): list, execute
   * **Rules** (5): list, get, create, update, delete, execute
-  * **Hubs** (2): list, health
+  * **Hubs** (3): list, health, list installed Edge drivers
   * **Capabilities** (3): get definition, list standard, list namespaces
   * **Installed Apps** (2): list, get
   * **Subscriptions** (3): list, create, delete
   * **Schedules** (4): list, get, create, delete
   * **Notifications** (1): send push notification
-* **MCP Tool Annotations** for safety — all 51 tools annotated with `readOnlyHint`, `destructiveHint`, and `idempotentHint` per the MCP spec
+* **MCP Tool Annotations** for safety — all tools annotated with `readOnlyHint`, `destructiveHint`, and `idempotentHint` per the MCP spec
   * Destructive operations (delete device/location/rule) clearly marked
   * Physical side-effect operations (send command, execute scene, change mode) marked
   * `delete_location` gated behind `smartthings:location:delete` scope when auth is enabled
+* **Capability Discovery** — resolve full capability schemas (attributes, commands, parameters) for any device, including custom Edge driver capabilities
+* **Edge Driver Discovery** — enumerate installed Edge drivers on any hub
+* **Preference Fallback** — gracefully handles the broken per-device preferences endpoint by falling back to device profile definitions
 * Exposes device / status / location data as **MCP Resources** with read-through cache
 * Supports all official **MCP-Go transports**
   * **Stdio** (CLI / local), **StreamableHTTP**, **Server-Sent Events (SSE)**
@@ -50,7 +60,7 @@ Pick whichever method suits your setup. All three produce the same result: Smart
 ### Option 1 - Pre-built binary (recommended)
 
 Download the latest release for your platform from the
-[Releases](https://github.com/langowarny/smartthings-mcp/releases) page, then add to your
+[Releases](https://github.com/ravensorb/smartthings-mcp/releases) page, then add to your
 Claude Desktop config:
 
 <details>
@@ -128,13 +138,11 @@ Set the `MCP_AUTH_TOKEN` environment variable to a valid JWT from your OIDC prov
   "mcpServers": {
     "smartthings": {
       "type": "http",
-      "url": "https://your-server.example.com/smartthings-mcp",
+      "url": "https://your-server.example.com/smartthings-mcp"
     }
   }
 }
 ```
-
-
 
 ### Option 5 - Smithery
 
@@ -168,6 +176,7 @@ Protect HTTP transports (SSE, StreamableHTTP) with JWT bearer token validation. 
 | `MCP_AUTH_ENABLED` | `false` | Set to `true` to enable JWT auth |
 | `MCP_AUTH_OIDC_ISSUER_URL` | - | OIDC issuer URL (discovery auto-resolves `/.well-known/openid-configuration`) |
 | `MCP_AUTH_AUDIENCE` | - | Expected `aud` claim (typically the OAuth client ID in your IdP) |
+| `MCP_AUTH_CLIENT_SECRET` | - | Client secret for confidential clients (used by DCR proxy) |
 | `MCP_AUTH_SCOPES` | - | Comma-separated required scopes (optional) |
 | `MCP_AUTH_RESOURCE_ID` | - | Enables RFC 9728 metadata at `/.well-known/oauth-protected-resource` (optional) |
 
@@ -235,11 +244,12 @@ All tools include MCP [tool annotations](https://modelcontextprotocol.io/specifi
 | `list_devices` | `location_id?` | read-only | List devices (optionally filtered by location) |
 | `get_device` | `device_id` | read-only | Device metadata |
 | `get_device_status` | `device_id` | read-only | Live device status |
-| `get_device_preferences` | `device_id` | read-only | Read device preferences |
-| `update_device_preferences` | `device_id`, `preferences` | idempotent | Write device preferences (e.g., motion sensitivity) |
+| `get_device_preferences` | `device_id` | read-only | Read device preferences (falls back to profile definitions if API unavailable) |
+| `update_device_preferences` | `device_id`, `preferences` | idempotent | Write device preferences (see [Known Limitations](#known-limitations)) |
 | `get_device_health` | `device_id` | read-only | Check if device is online/offline |
 | `delete_device` | `device_id` | **destructive** | Remove a device (irreversible) |
-| `list_device_capabilities` | `device_id` | read-only | Supported capabilities |
+| `list_device_capabilities` | `device_id` | read-only | Supported capability IDs |
+| `get_device_capabilities` | `device_id` | read-only | Full capability schemas with commands and attributes for all capabilities |
 | `send_device_command` | `device_id`, `capability`, `command`, `component?`, `arguments?` | **side-effect** | Send a command (physically actuates device) |
 | `get_device_history` | `device_id` | read-only | Recent event history |
 | `update_device` | `device_id`, `label?`, `room_id?` | idempotent | Rename or move a device to a different room |
@@ -294,12 +304,13 @@ All tools include MCP [tool annotations](https://modelcontextprotocol.io/specifi
 | `delete_rule` | `rule_id` | **destructive** | Delete a rule |
 | `execute_rule` | `rule_id` | **side-effect** | Manually trigger a rule |
 
-### Hubs
+### Hubs & Edge Drivers
 
 | Tool | Params | Hint | Description |
 |------|--------|------|-------------|
 | `list_hubs` | - | read-only | List hubs |
 | `get_hub_health` | `hub_id` | read-only | Hub health status |
+| `list_hub_drivers` | `hub_id` | read-only | List Edge drivers installed on a hub |
 
 ### Capabilities
 
@@ -347,6 +358,23 @@ All tools include MCP [tool annotations](https://modelcontextprotocol.io/specifi
 | `st://devices/{device_id}/status` | Live status | `application/json` |
 | `st://locations/{location_id}` | Location metadata | `application/json` |
 | `st://locations` | All locations | `application/json` |
+
+## Known Limitations
+
+### Per-device preferences endpoint (406 Not Acceptable)
+
+The SmartThings per-device preferences endpoint (`/devices/{deviceId}/preferences`) is **not functional** in the public API. It returns 406 for all device types with all Accept headers. This is confirmed by:
+* The endpoint is not in the [official OpenAPI spec](https://swagger.api.smartthings.com/public/st-api.yml)
+* The SmartThings Core SDK has a `getPreferences()` method but no corresponding server-side route exists
+* Samsung staff have confirmed preferences can only be set via the mobile app
+
+**How this server handles it:**
+
+* `get_device_preferences` gracefully falls back to fetching the device's profile, returning preference **definitions** (available settings, types, and defaults) rather than current values
+* `update_device_preferences` returns a clear error explaining the limitation
+* The response includes a `_note` field so LLMs understand the context
+
+To programmatically set device configuration parameters (e.g., Zigbee/Z-Wave settings), the recommended path is a custom Edge driver that exposes configuration as a callable capability command via `send_device_command`.
 
 ## Development
 
