@@ -4,12 +4,14 @@
 Opens a browser for login, listens for the callback, exchanges the code,
 and prints the access token to stdout.
 
-Usage: python3 scripts/get-token.py [.env file]
+Usage: python3 scripts/get-token.py [-jwt] [.env file]
 Requires: pip install requests-oauthlib
 """
 
+import argparse
 import hashlib
 import http.server
+import json
 import os
 import secrets
 import sys
@@ -17,6 +19,9 @@ import threading
 import urllib.parse
 import webbrowser
 import base64
+
+import os as _os
+_os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 import requests
 from requests_oauthlib import OAuth2Session
@@ -47,6 +52,55 @@ def discover(issuer_url):
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     return resp.json()
+
+
+def decode_jwt(token_str):
+    """Decode a JWT and return (header, payload) as dicts. Does not verify the signature."""
+    parts = token_str.split(".")
+    if len(parts) != 3:
+        print("Warning: token does not look like a JWT (expected 3 dot-separated parts)", file=sys.stderr)
+        return None, None
+
+    def _b64decode(s):
+        # Add padding if needed
+        s += "=" * (-len(s) % 4)
+        return json.loads(base64.urlsafe_b64decode(s))
+
+    try:
+        header = _b64decode(parts[0])
+        payload = _b64decode(parts[1])
+        return header, payload
+    except Exception as e:
+        print(f"Warning: failed to decode JWT: {e}", file=sys.stderr)
+        return None, None
+
+
+def print_jwt_info(token_str):
+    """Pretty-print JWT header and payload claims."""
+    header, payload = decode_jwt(token_str)
+    if header is None:
+        return
+
+    print("\n--- JWT Header ---", file=sys.stderr)
+    print(json.dumps(header, indent=2), file=sys.stderr)
+    print("\n--- JWT Payload ---", file=sys.stderr)
+    print(json.dumps(payload, indent=2), file=sys.stderr)
+
+    # Show expiry info if present
+    import datetime
+    if "exp" in payload:
+        exp = datetime.datetime.fromtimestamp(payload["exp"], tz=datetime.timezone.utc)
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        remaining = exp - now
+        print(f"\nExpires: {exp.isoformat()} (in {remaining})", file=sys.stderr)
+    if "iat" in payload:
+        iat = datetime.datetime.fromtimestamp(payload["iat"], tz=datetime.timezone.utc)
+        print(f"Issued:  {iat.isoformat()}", file=sys.stderr)
+    if "sub" in payload:
+        print(f"Subject: {payload['sub']}", file=sys.stderr)
+    if "iss" in payload:
+        print(f"Issuer:  {payload['iss']}", file=sys.stderr)
+    print(file=sys.stderr)
 
 
 def generate_pkce():
@@ -82,8 +136,14 @@ class CallbackHandler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    env_file = sys.argv[1] if len(sys.argv) > 1 else ".env"
-    load_env(env_file)
+    parser = argparse.ArgumentParser(
+        description="Fetch a bearer token from an OIDC provider using authorization code + PKCE."
+    )
+    parser.add_argument("-jwt", action="store_true", help="Decode and display JWT header and payload claims")
+    parser.add_argument("env_file", nargs="?", default=".env", help="Path to .env file (default: .env)")
+    args = parser.parse_args()
+
+    load_env(args.env_file)
 
     issuer_url = os.environ.get("MCP_AUTH_OIDC_ISSUER_URL", "").rstrip("/")
     client_id = os.environ.get("MCP_AUTH_AUDIENCE", "")
@@ -106,7 +166,7 @@ def main():
     code_verifier, code_challenge = generate_pkce()
 
     # Build authorization URL.
-    oauth = OAuth2Session(client_id, redirect_uri=REDIRECT_URI, scope=["openid"])
+    oauth = OAuth2Session(client_id, redirect_uri=REDIRECT_URI, scope=["openid", "profile", "email", "groups"])
     auth_url, state = oauth.authorization_url(
         auth_endpoint,
         code_challenge=code_challenge,
@@ -149,6 +209,9 @@ def main():
     if not access_token:
         print(f"Error: No access_token in response: {token}", file=sys.stderr)
         sys.exit(1)
+
+    if args.jwt:
+        print_jwt_info(access_token)
 
     print(access_token)
 
