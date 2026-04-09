@@ -475,6 +475,7 @@ func (c *Client) get(path string, out interface{}) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
@@ -508,6 +509,7 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
@@ -543,6 +545,7 @@ func (c *Client) put(path string, body interface{}, out interface{}) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
@@ -568,6 +571,7 @@ func (c *Client) delete(path string) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("API request failed: %w", err)
