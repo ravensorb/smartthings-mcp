@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -190,32 +189,6 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 		target := issuer + "/.well-known/openid-configuration"
 		topMux.Handle("GET /.well-known/openid-configuration", http.RedirectHandler(target, http.StatusFound))
 	}
-	// SmartThings webhook lifecycle handler (unauthenticated — required for
-	// OAuth app creation PING challenge and future lifecycle events).
-	topMux.Handle("POST /webhook", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		lifecycle, _ := body["lifecycle"].(string)
-		a.logger.Infof("SmartThings webhook lifecycle: %s", lifecycle)
-
-		var resp any
-		switch lifecycle {
-		case "PING":
-			resp = map[string]any{"statusCode": 200, "pingData": body["pingData"]}
-		case "CONFIRMATION":
-			cd, _ := body["confirmationData"].(map[string]any)
-			confirmURL, _ := cd["confirmationUrl"].(string)
-			resp = map[string]any{"statusCode": 200, "targetUrl": confirmURL}
-		default:
-			resp = map[string]any{"statusCode": 200}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-
 	topMux.Handle("/", authMux)
 
 	return a.corsMiddleware(topMux)
