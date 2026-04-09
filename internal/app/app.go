@@ -18,6 +18,7 @@ import (
 	"github.com/langowarny/smartthings-mcp/internal/auth"
 	srv "github.com/langowarny/smartthings-mcp/internal/server"
 	"github.com/langowarny/smartthings-mcp/internal/smartthings"
+	"github.com/langowarny/smartthings-mcp/internal/version"
 )
 
 type Config struct {
@@ -174,7 +175,7 @@ func (a *Application) setupMux(sseHandler, streamHandler http.Handler, primaryTr
 }
 
 func (a *Application) Start() error {
-	a.logger.Info("Starting SmartThings MCP Server...")
+	a.logger.Infof("Starting SmartThings MCP Server v%s (commit: %s, built: %s)", version.Version, version.Commit, version.Date)
 
 	// Log loaded configuration.
 	a.logger.Infof("Config: transport=%s, host=%s, port=%d", a.cfg.Transport, a.cfg.Host, a.cfg.Port)
